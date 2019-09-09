@@ -15,6 +15,7 @@
 #define IPRINT 'd'
 #define STRCONST 's'
 #define STRPRINT 'p'
+#define IADD 'a'
 #define HALT 'h'
 
 typedef struct StackObj {
@@ -44,6 +45,13 @@ void iconst() {
     top.idata = malloc(sizeof(int));
     top.idata[0] = c;
     stack[++sp] = top;
+}
+
+void iadd() {
+    StackObj * operand_a = &stack[sp--];
+    StackObj * operand_b = &stack[sp--];
+    operand_a->idata[0] += operand_b->idata[0];
+    stack[++sp] = *operand_a;
 }
 
 void iprint() {
@@ -114,6 +122,7 @@ int main(int argc, char ** argv) {
             case STRCONST: strconst(); break;
             case STRPRINT: strprint(); break;
             case IPRINT: iprint(); break;
+            case IADD: iadd(); break;
             case HALT: return 0;
             default: printf("ERROR: Invalid instruction %d\n", instruction);
         }
