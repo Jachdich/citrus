@@ -1,5 +1,8 @@
-vm: vm.c
-	gcc vm.c -o vm -Wall
+C_SOURCES = $(wildcard *.c)
+HEADERS = $(wildcard *.h)
+
+vm: ${C_SOURCES} ${HEADERS}
+	gcc ${C_SOURCES} ${HEADERS} -o vm -Wall
 
 clean:
 	rm -rf vm *~

@@ -4,19 +4,11 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <stdint.h>
+#include <string.h>
 
-#define INT 0
-#define STRING 1
-#define CHAR 2
-#define FLOAT 3
-
-#define NOP 'n'
-#define ICONST 'i'
-#define IPRINT 'd'
-#define STRCONST 's'
-#define STRPRINT 'p'
-#define IADD 'a'
-#define HALT 'h'
+#include "definitions.h"
+#include "debug.h"
+#include "instructions.h"
 
 typedef struct StackObj {
     int type;
@@ -33,60 +25,18 @@ int fp = 0;
 int ip = 0;
 
 int codelen = 0;
+int equal = 0;
 
 uint8_t * code; // {STRCONST, 11, 'h', 'e', 'l', 'l', 'o', ' ', 'w', 'o', 'r', 'l', 'd', '!', STRPRINT};
 StackObj stack[1024];
+StackObj globals[1024];
 
-void iconst() {
-    int c = code[ip++];
-    StackObj top;
-    top.type = INT;
-    top.size = 1;
-    top.idata = malloc(sizeof(int));
-    top.idata[0] = c;
-    stack[++sp] = top;
-}
-
-void iadd() {
-    StackObj * operand_a = &stack[sp--];
-    StackObj * operand_b = &stack[sp--];
-    operand_a->idata[0] += operand_b->idata[0];
-    stack[++sp] = *operand_a;
-}
-
-void iprint() {
-    StackObj * top = &stack[sp--];
-    if (top->size != 1) {
-        printf("Error: Stack is corrupted! (int size != 1)\n");
-    } else if (top->type != INT) {
-        printf("Error: iprint needs type INT(0), got type %d\n", top->type);
-    } else {
-        printf("%d\n", top->idata[0]);
-    }
-}
-
-void strconst() {
+int getNextCodeInt() {
     int length = code[ip++] << 8;
-    length = (length << 8) + (code[ip++] << 8);
-    length = (length << 8) + (code[ip++] << 8);
-    length = (length << 8) + (code[ip++]);
-    StackObj top;
-    top.type = STRING;
-    top.size = length;
-    top.cdata = malloc(sizeof(char) * length);
-    for (int i = 0; i < length; i++) {
-        top.cdata[i] = (char)code[ip++];
-        //printf("%c", code[ip - 1]);
-    }
-    stack[++sp] = top;
-}
-
-void strprint() {
-    StackObj * top = &stack[sp--];
-    for (int i = 0; i < top->size; i++) {
-        printf("%c", top->cdata[i]);
-    }
-    //printf("\n");
+    length = (length << 8) | (code[ip++] << 8);
+    length = (length << 8) | (code[ip++] << 8);
+    length = (length << 8) | (code[ip++]);
+    return length;
 }
 
 int load_file(char * filename) {
@@ -106,16 +56,55 @@ int load_file(char * filename) {
 }
 
 int main(int argc, char ** argv) {
-    if (argc != 2) {
+    if (argc < 2) {
         printf("Error: Expected file as argument\n");
         return 1;
     }
     if (load_file(argv[1]) == 1) {
         return 1;
     }
+    
+    int debug = 0;
+    int ARG_START = 2;
+    if (argc == 3) {
+        if (strcmp(argv[2], "-d") == 0) {
+            debug = 1;
+            ARG_START = 3;
+        }
+    }
+    for (int i = ARG_START; i < argc; i++) {
+        StackObj top;
+        int length = strlen(argv[i]);
+        top.type = STRING;
+        top.size = length;
+        top.cdata = malloc(sizeof(char) * length);
+        top.cdata = argv[i];
+        stack[++sp] = top;
+    }
 
     while (ip < codelen) {
         char instruction = code[ip++];
+        if (debug) {
+            while (1) {
+                char inp[100];
+                printf("> ");
+                fgets(inp, 100, stdin);
+                if (strcmp("advance\n", inp) == 0 || strcmp("a\n", inp) == 0) {
+                    printf("\n");
+                    break;
+                } else if (strcmp("stack\n", inp) == 0) {
+                    printstack();
+                } else if (strcmp("instr\n", inp) == 0) {
+                    printinstr(instruction);
+                } else if (strcmp("code\n", inp) == 0) {
+                    printcode();
+                } else if (strcmp("\n", inp) == 0) {
+                    printstack();
+                    printinstr(instruction);
+                    break;
+                }
+            }
+        }
         switch (instruction) {
             case NOP: break;
             case ICONST: iconst(); break;
@@ -123,6 +112,15 @@ int main(int argc, char ** argv) {
             case STRPRINT: strprint(); break;
             case IPRINT: iprint(); break;
             case IADD: iadd(); break;
+            case ISUB: isub(); break;
+            case ICOMP: icompare(); break;
+            case JMP: jump(); break;
+            case JZ: jump_zero(); break;
+            case DUP: duplicate(); break;
+            case GLOAD: gload(); break;
+            case GSTORE: gstore(); break;
+            case LOAD: load(); break;
+            case STORE: store(); break;
             case HALT: return 0;
             default: printf("ERROR: Invalid instruction %d\n", instruction);
         }
