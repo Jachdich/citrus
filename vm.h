@@ -11,7 +11,7 @@ typedef struct StackObj {
     };
 } StackObj;
 
-extern int * code;
+extern unsigned char * code;
 extern StackObj globals[1024];
 extern int ip;
 extern int sp;

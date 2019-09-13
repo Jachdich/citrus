@@ -5,7 +5,6 @@
 
 void iconst() {
     int number = getNextCodeInt();
-    //printf("Loaded value %d\n", number);
     StackObj top;
     top.type = INT;
     top.size = 1;
@@ -103,6 +102,13 @@ void gstore() {
     globals[address] = *data;
 }
 void load() {
-    
+    int offset = getNextCodeInt();
+    //printf("LOAD OFFSET: %d, LOAD ABS: %d\n", offset, fp + offset);
+    StackObj * data = &stack[fp + offset];
+    stack[++sp] = *data;
 }
-void store() {}
+void store() {
+    int offset = getNextCodeInt();
+    StackObj * top = &stack[sp--];
+    stack[fp + offset] = *top;
+}

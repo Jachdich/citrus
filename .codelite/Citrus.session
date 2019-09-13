@@ -12,21 +12,21 @@
     </TabInfo>
     <TabInfo>
       <wxString Value="/media/sage/JamsFiles/Programs/Active/Citrus/vm.h" Name="FileName"/>
-      <int Value="0" Name="FirstVisibleLine"/>
+      <int Value="7" Name="FirstVisibleLine"/>
       <int Value="5" Name="CurrentLine"/>
       <wxArrayString Name="Bookmarks"/>
       <IntVector Name="CollapsedFolds"/>
     </TabInfo>
     <TabInfo>
       <wxString Value="/media/sage/JamsFiles/Programs/Active/Citrus/debug.c" Name="FileName"/>
-      <int Value="0" Name="FirstVisibleLine"/>
+      <int Value="12" Name="FirstVisibleLine"/>
       <int Value="10" Name="CurrentLine"/>
       <wxArrayString Name="Bookmarks"/>
       <IntVector Name="CollapsedFolds"/>
     </TabInfo>
     <TabInfo>
       <wxString Value="/media/sage/JamsFiles/Programs/Active/Citrus/debug.h" Name="FileName"/>
-      <int Value="0" Name="FirstVisibleLine"/>
+      <int Value="5" Name="FirstVisibleLine"/>
       <int Value="4" Name="CurrentLine"/>
       <wxArrayString Name="Bookmarks"/>
       <IntVector Name="CollapsedFolds"/>
@@ -40,14 +40,14 @@
     </TabInfo>
     <TabInfo>
       <wxString Value="/media/sage/JamsFiles/Programs/Active/Citrus/instructions.h" Name="FileName"/>
-      <int Value="0" Name="FirstVisibleLine"/>
+      <int Value="18" Name="FirstVisibleLine"/>
       <int Value="16" Name="CurrentLine"/>
       <wxArrayString Name="Bookmarks"/>
       <IntVector Name="CollapsedFolds"/>
     </TabInfo>
     <TabInfo>
       <wxString Value="/media/sage/JamsFiles/Programs/Active/Citrus/definitions.h" Name="FileName"/>
-      <int Value="0" Name="FirstVisibleLine"/>
+      <int Value="21" Name="FirstVisibleLine"/>
       <int Value="19" Name="CurrentLine"/>
       <wxArrayString Name="Bookmarks"/>
       <IntVector Name="CollapsedFolds"/>

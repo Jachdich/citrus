@@ -3,7 +3,7 @@
 #include "definitions.h"
 
 void printstack() {
-    for (int i = (sp - 10 < 0 ? 0 : sp - 10); i < sp + 1; i++) {
+    for (int i = STACK_START; i < sp + 1; i++) {
         if (stack[i].type == INT) {
             printf("%d,", stack[i].idata[0]);
         } else if (stack[i].type == STRING) {

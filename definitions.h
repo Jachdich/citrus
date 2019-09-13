@@ -19,4 +19,6 @@
 #define LOAD 'q'
 #define STORE 'w'
 #define HALT 'h'
+
+#define STACK_START 100
 #endif

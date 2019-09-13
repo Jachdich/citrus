@@ -20,7 +20,7 @@ typedef struct StackObj {
     };
 } StackObj;
 
-int sp = -1;
+int sp = STACK_START;
 int fp = 0;
 int ip = 0;
 
