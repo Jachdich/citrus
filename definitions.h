@@ -1,4 +1,5 @@
 #ifndef INT
+
 #define INT 0
 #define STRING 1
 #define FLOAT 2
@@ -19,6 +20,16 @@
 #define LOAD 'q'
 #define STORE 'w'
 #define HALT 'h'
+#define CALL '#'
+#define RET 'r'
 
-#define STACK_START 100
+#define INT_IS_64 0
+#define STACK_START 50
+
+#if INT_IS_64 == 0
+#define INT_DATATYPE int
+#else
+#define INT_DATATYPE long
+#endif
+
 #endif

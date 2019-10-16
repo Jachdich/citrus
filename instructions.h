@@ -15,5 +15,7 @@ void gload();
 void gstore();
 void load();
 void store();
+void ret();
+void call();
 
 #endif

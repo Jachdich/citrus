@@ -14,7 +14,7 @@ typedef struct StackObj {
     int type;
     int size;
     union {
-        int * idata;
+        INT_DATATYPE * idata;
         float * fdata;
         char * cdata;
     };
@@ -31,10 +31,16 @@ uint8_t * code; // {STRCONST, 11, 'h', 'e', 'l', 'l', 'o', ' ', 'w', 'o', 'r', '
 StackObj stack[1024];
 StackObj globals[1024];
 
-int getNextCodeInt() {
-    int length = code[ip++] << 8;
+INT_DATATYPE getNextCodeInt() {
+    INT_DATATYPE length = code[ip++] << 8;
     length = (length << 8) | (code[ip++] << 8);
     length = (length << 8) | (code[ip++] << 8);
+    #if INT_IS_64 == 1
+    length = (length << 8) | (code[ip++] << 8);
+    length = (length << 8) | (code[ip++] << 8);
+    length = (length << 8) | (code[ip++] << 8);
+    length = (length << 8) | (code[ip++] << 8);
+    #endif
     length = (length << 8) | (code[ip++]);
     return length;
 }
@@ -56,6 +62,11 @@ int load_file(char * filename) {
 }
 
 int main(int argc, char ** argv) {
+    StackObj top;
+    top.type = INT;
+    top.size = 1;
+    top.idata = malloc(sizeof(int));
+    stack[sp] = top;
     if (argc < 2) {
         printf("Error: Expected file as argument\n");
         return 1;
@@ -84,6 +95,7 @@ int main(int argc, char ** argv) {
 
     while (ip < codelen) {
         char instruction = code[ip++];
+        //printf("IP: %d, CODE: %d (or %c)\n", ip, instruction, instruction);
         if (debug) {
             while (1) {
                 char inp[100];
@@ -98,6 +110,12 @@ int main(int argc, char ** argv) {
                     printinstr(instruction);
                 } else if (strcmp("code\n", inp) == 0) {
                     printcode();
+                } else if (strncmp(inp, "var", 3) == 0) {
+                    char * number = malloc(sizeof(char) * 32);
+                    strncpy(number, inp, 32);
+                    remove_spaces(number + 3, 29);
+                    int num = (int) strtol(number + 3, (char **)NULL, 10);
+                    printvar(num);
                 } else if (strcmp("\n", inp) == 0) {
                     printstack();
                     printinstr(instruction);
@@ -121,6 +139,8 @@ int main(int argc, char ** argv) {
             case GSTORE: gstore(); break;
             case LOAD: load(); break;
             case STORE: store(); break;
+            case CALL: call(); break;
+            case RET: ret(); break;
             case HALT: return 0;
             default: printf("ERROR: Invalid instruction %d\n", instruction);
         }

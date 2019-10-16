@@ -1,7 +1,7 @@
 SOURCES = $(wildcard *.c)
 HEADERS = $(wildcard *.h)
 
-CFLAGS = -Wall
+CFLAGS = -Wall -g
 
 vm: ${SOURCES} ${HEADERS}
 	gcc ${SOURCES} ${HEADERS} -o vm ${CFLAGS}

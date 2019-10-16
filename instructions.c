@@ -4,7 +4,7 @@
 #include "definitions.h"
 
 void iconst() {
-    int number = getNextCodeInt();
+    INT_DATATYPE number = getNextCodeInt();
     StackObj top;
     top.type = INT;
     top.size = 1;
@@ -39,7 +39,7 @@ void iprint() {
 }
 
 void strconst() {
-    int length = getNextCodeInt();
+    INT_DATATYPE length = getNextCodeInt();
     StackObj top;
     top.type = STRING;
     top.size = length;
@@ -91,24 +91,55 @@ void duplicate() {
 }
 
 void gload() {
-    int address = getNextCodeInt();
+    INT_DATATYPE address = getNextCodeInt();
     StackObj * var = &globals[address];
     stack[++sp] = *var;
 }
 
 void gstore() {
-    int address = getNextCodeInt();
+    INT_DATATYPE address = getNextCodeInt();
     StackObj * data = &stack[sp--];
+    //printf("ADDR: %d, IDATA: %d\n", address, data->idata[0]);
     globals[address] = *data;
 }
+
 void load() {
-    int offset = getNextCodeInt();
+    INT_DATATYPE offset = getNextCodeInt();
     //printf("LOAD OFFSET: %d, LOAD ABS: %d\n", offset, fp + offset);
     StackObj * data = &stack[fp + offset];
     stack[++sp] = *data;
 }
+
 void store() {
-    int offset = getNextCodeInt();
+    INT_DATATYPE offset = getNextCodeInt();
     StackObj * top = &stack[sp--];
     stack[fp + offset] = *top;
+}
+
+void call() {
+    StackObj frame;
+    frame.type = INT;
+    frame.size = 1;
+    frame.idata = malloc(sizeof(int));
+    frame.idata[0] = fp;
+    stack[++sp] = frame;
+     
+    StackObj instruction;
+    instruction.type = INT;
+    instruction.size = 1;
+    instruction.idata = malloc(sizeof(int));
+    instruction.idata[0] = fp;
+    stack[++sp] = instruction;
+    
+    fp = sp;
+    sp += 10;
+    ip = getNextCodeInt();
+}
+
+void ret() {
+    sp = fp;
+    StackObj * top = &stack[sp--];
+    fp = top->idata[0];
+    StackObj * top2 = &stack[sp--];
+    ip = top2->idata[0];  
 }

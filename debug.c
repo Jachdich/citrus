@@ -10,7 +10,17 @@ void printstack() {
             printf("%s,", stack[i].cdata);
         }
     }
+    //printf("%d", stack[sp].idata[0]);
     printf("\n");
+}
+
+void printvar(int index) {
+    StackObj * a = &globals[index];
+    if (a->type == INT) {
+        printf("%d,", a->idata[0]);
+    } else if (a->type == STRING) {
+        printf("%s,", a->cdata);
+    }
 }
 
 void printcode() {
@@ -47,4 +57,18 @@ void printinstr(char instr) {
         default:       printf("INVALID");
     }
     printf(")\n");
+}
+
+void remove_spaces(char * buf , int len) {
+    int i = 0, j = 0;
+    char temp[100] = {0};
+    
+    for(i = 0, j = 0; i < len; i++) {
+        if((buf[i] == ' ' || buf[i] == '\n') && buf[i] != NULL) {
+            for(j = i; j < len; j++) {
+                buf[j] = buf[j + 1];
+            }
+            len--;
+        }
+    }
 }

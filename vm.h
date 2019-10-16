@@ -1,11 +1,12 @@
 #ifndef VM_H
 #define VM_H
+#include "definitions.h"
 
 typedef struct StackObj {
     int type;
     int size;
     union {
-        int * idata;
+        INT_DATATYPE * idata;
         float * fdata;
         char * cdata;
     };

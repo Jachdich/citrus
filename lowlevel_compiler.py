@@ -60,21 +60,59 @@ class Compiler:
         return out2
 
 c = Compiler("""
-start:
 i
-\\11
+\\0
+f
+\\0
+i
+\\5
+f
+\\1
+
+start:
+g
+\\1
+i
+\\1
+e
+f
+\\1
+g
+\\1
+g
+\\0
+a
+f
+\\0
+g
+\\1
+i
+\\0
+c
+i
+$end
+z
 i
 $start
 j
+end:
+g
+\\0
+o
+h
 """)
 
 #print([ord(i) for i in c.assemble()])
 with open("assembler.vm", "w") as f:                
     f.write(c.assemble())
 
+out = ""
 for char in c.assemble():
-    if ord(char) > 50:
-        print(char)
+    if ord(char) < 50:
+        out += "\\" + str(ord(char))
+
     else:
-        print("ORD:" + str(ord(char)))
+        out += char
+
+print(out)
 
