@@ -1,14 +1,23 @@
 .text
 .global main
 .type main, @function
-main:movq $1, %rax
+main:
+pushq %rdi
+pushq %rax
 movq $1, %rbx
-addq %rax, %rbx
+movq %rbx, %rdi
+movq $1, %rbx
+movq %rbx, %rsi
+call add
+movq %rax, %rbx
+popq %rax
+popq %rdi
 movq %rbx, %rdi
 call putd
-movq $6, %rax
-movq $9, %rbx
-imul %rax, %rbx
-movq %rbx, %rdi
-call putd
+movq %rax, %rbx
+ret
+
+add:
+addq %rdi, %rsi
+movq %rsi, %rax
 ret
