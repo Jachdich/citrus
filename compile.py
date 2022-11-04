@@ -1,28 +1,37 @@
 from pyparsing import *
 import os
 
-ident = Word(alphas)
+ident = Word(alphas + "_")
 type_ = Literal("i64")
 integer = Combine(Optional("-") + Word("0123456789"))
 decimal = Combine(Optional("-") + Word("0123456789") + Literal(".") + Word("0123456789"))
 number = decimal | Group(integer).set_results_name("int_literal")
 
+OPAREN, CPAREN, COMMA, COLON, SEMI, EQ, OBRACE, CBRACE = map(Suppress, "(),:;={}")
 addexpr = Forward()
 mulexpr = Forward()
 expr = Forward()
-term = (Suppress("(") + expr + Suppress(")")) | number | ident
+smt = Forward()
+term = (OPAREN + expr + CPAREN) | number | ident
+compoundsmt = Group(OBRACE + ZeroOrMore(smt) + CBRACE)
+compoundexpr = Group(OBRACE + ZeroOrMore(smt) + expr + CBRACE)
 
 mulexpr << (Group(term + (Literal("*") | Literal("/") | Literal("%")) + mulexpr).set_results_name("binexpr")| term)
 addexpr << (Group(mulexpr + (Literal("+") | Literal("-")) + addexpr).set_results_name("binexpr") | mulexpr)
 
-funccall = Group(ident + Suppress("(") + ZeroOrMore(expr + Suppress(",")) + Optional(expr) + Suppress(")")).set_results_name("funccall")
-funcdef = Group(Suppress("fn") + ident + Suppress("(") + 
-        Group(ZeroOrMore(ident + Suppress(":") + type_ + Suppress(",")) + Optional(ident + Suppress(":") + type_)) + Suppress(")") +
-         Suppress("->") + type_ + Suppress("=") + expr + Suppress(";")).set_results_name("funcdef")
+funccall = Group(ident + OPAREN + ZeroOrMore(expr + COMMA) + Optional(expr) + CPAREN).set_results_name("funccall")
+
+eqfunc       =  EQ + expr + SEMI
+compoundfunc =  compoundexpr | compoundsmt
+
+funcdef = Group(Suppress("fn") + ident + OPAREN + 
+          Group(ZeroOrMore(ident + COLON + type_ + COMMA) + Optional(ident + COLON + type_)) + CPAREN +
+          Optional(Suppress("->") + type_) + (compoundfunc | eqfunc)).set_results_name("funcdef")
+
 expr << (funccall | addexpr)
 
-smt = (expr + Suppress(";")) | funcdef
-prog = ZeroOrMore(smt)
+smt << (expr + Suppress(";"))
+prog = ZeroOrMore(funcdef)
 
 def to_list(pr):
     if isinstance(pr, ParseResults):
@@ -60,17 +69,23 @@ def run_tests():
 
 
 test_prog = """
-fn add(a: i64, b: i64) -> i64 = a + b;
-putd(add(1, 1));
+fn add_maybe(a: i64, b: i64) -> i64 {
+    putd(a);
+    putd(b);
+    a + b
+}
+fn main() {
+    putd(add_maybe(1, 1));
+}
+
 """
 
 def parse(text):
     return prog.parse_string(text, parse_all=True)
 
-
 class CG:
     def __init__(self):
-        self.code = ".text\n.global main\n.type main, @function\nmain:\n"
+        self.code = ".text\n.global main\n.type main, @function\n"
         self.regs = ["%rax", "%rbx", "%rcx", "%rdx", "%rsi", "%rdi", "%r8", "%r9"]
         self.regs_used = [False] * len(self.regs)
         
@@ -191,16 +206,12 @@ class CG:
     def gen(self, ast):
         print(ast.dump())
         for smt in ast:
-            if smt.get_name() == "funccall":
-                reg = self.expr(smt)
-                self.regfree(reg)
-            elif smt.get_name() == "funcdef":
+            if smt.get_name() == "funcdef":
                 self.funcdef(smt)
             else:
                 print(f"Invalid syntax: Unexpected token '{smt[0]}'")
                 exit(1)
         
-        self.code += "ret\n"
         with open("test2.s", "w") as f:
             f.write(self.code)
         print(self.code)
