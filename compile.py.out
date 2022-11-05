@@ -155,22 +155,22 @@ class CG:
         for reg in caller_saved_regs:
             if self.is_reg_used(reg):
                 saved_regs.append(reg)
-                self.code += "\tpushq\t" + reg; self.code += (" " * (56 - len_of_last_line(self.code)) + "; " + str(getframeinfo(currentframe()).lineno) + "\n")
+                self.code += "\tpushq\t" + reg; self.code += (" " * (56 - len_of_last_line(self.code)) + "# " + str(getframeinfo(currentframe()).lineno) + "\t" + str([reg for i, reg in enumerate(self.regs) if self.regs_used[i]]) + "\n")
 
         regs = self.alloc_arg_regs(num_args)
 
         for i, arg in enumerate(ast[1:]):
             reg = self.expr(arg)
-            self.code += "\tmovq\t" + reg + ",\t" + regs[i]; self.code += (" " * (56 - len_of_last_line(self.code)) + "; " + str(getframeinfo(currentframe()).lineno) + "\n")
+            self.code += "\tmovq\t" + reg + ",\t" + regs[i]; self.code += (" " * (56 - len_of_last_line(self.code)) + "# " + str(getframeinfo(currentframe()).lineno) + "\t" + str([reg for i, reg in enumerate(self.regs) if self.regs_used[i]]) + "\n")
             self.regfree(reg)
 
-        self.code += "\tcall\t" + str(funcname); self.code += (" " * (56 - len_of_last_line(self.code)) + "; " + str(getframeinfo(currentframe()).lineno) + "\n")
+        self.code += "\tcall\t" + str(funcname); self.code += (" " * (56 - len_of_last_line(self.code)) + "# " + str(getframeinfo(currentframe()).lineno) + "\t" + str([reg for i, reg in enumerate(self.regs) if self.regs_used[i]]) + "\n")
 
         ret_reg = self.regalloc()
-        self.code += "\tmovq\t%rax,\t" + ret_reg; self.code += (" " * (56 - len_of_last_line(self.code)) + "; " + str(getframeinfo(currentframe()).lineno) + "\n")
+        self.code += "\tmovq\t%rax,\t" + ret_reg; self.code += (" " * (56 - len_of_last_line(self.code)) + "# " + str(getframeinfo(currentframe()).lineno) + "\t" + str([reg for i, reg in enumerate(self.regs) if self.regs_used[i]]) + "\n")
 
         for reg in saved_regs:
-            self.code += "\tpopq\t" + reg; self.code += (" " * (56 - len_of_last_line(self.code)) + "; " + str(getframeinfo(currentframe()).lineno) + "\n")
+            self.code += "\tpopq\t" + reg; self.code += (" " * (56 - len_of_last_line(self.code)) + "# " + str(getframeinfo(currentframe()).lineno) + "\t" + str([reg for i, reg in enumerate(self.regs) if self.regs_used[i]]) + "\n")
 
         return ret_reg
 
@@ -182,14 +182,14 @@ class CG:
             self.code += "\taddq\t"
         elif op == "*":
             self.code += "\timul\t"
-        self.code += lhs + ",\t" + rhs; self.code += (" " * (56 - len_of_last_line(self.code)) + "; " + str(getframeinfo(currentframe()).lineno) + "\n")
+        self.code += lhs + ",\t" + rhs; self.code += (" " * (56 - len_of_last_line(self.code)) + "# " + str(getframeinfo(currentframe()).lineno) + "\t" + str([reg for i, reg in enumerate(self.regs) if self.regs_used[i]]) + "\n")
 
         self.regfree(lhs)
         return rhs
 
     def int_literal(self, ast):
         reg = self.regalloc()
-        self.code += "\tmovq\t$" + str(ast[0]) + ",\t" + reg; self.code += (" " * (56 - len_of_last_line(self.code)) + "; " + str(getframeinfo(currentframe()).lineno) + "\n")
+        self.code += "\tmovq\t$" + str(ast[0]) + ",\t" + reg; self.code += (" " * (56 - len_of_last_line(self.code)) + "# " + str(getframeinfo(currentframe()).lineno) + "\t" + str([reg for i, reg in enumerate(self.regs) if self.regs_used[i]]) + "\n")
         return reg
 
     def ident(self, ast):
@@ -200,7 +200,7 @@ class CG:
             raise SyntaxError()
 
         reg = self.regalloc()
-        self.code += f"\tmovq\t-{self.locals[-1][name][1]}(%rbp),\t{reg}"; self.code += (" " * (56 - len_of_last_line(self.code)) + "; " + str(getframeinfo(currentframe()).lineno) + "\n")
+        self.code += f"\tmovq\t-{self.locals[-1][name][1]}(%rbp),\t{reg}"; self.code += (" " * (56 - len_of_last_line(self.code)) + "# " + str(getframeinfo(currentframe()).lineno) + "\t" + str([reg for i, reg in enumerate(self.regs) if self.regs_used[i]]) + "\n")
         return reg
 
     def expr(self, ast):
@@ -232,14 +232,14 @@ class CG:
 
         self.code += str(ast[0]) + ":\n"
         if locsize > 0:
-            self.code += "\tpushq\t%rbp"; self.code += (" " * (56 - len_of_last_line(self.code)) + "; " + str(getframeinfo(currentframe()).lineno) + "\n") + f"\tmovq\t%rsp,\t%rbp\n\tsubq\t${locsize},\t%rsp\n"
+            self.code += "\tpushq\t%rbp"; self.code += (" " * (56 - len_of_last_line(self.code)) + "# " + str(getframeinfo(currentframe()).lineno) + "\t" + str([reg for i, reg in enumerate(self.regs) if self.regs_used[i]]) + "\n") + f"\tmovq\t%rsp,\t%rbp\n\tsubq\t${locsize},\t%rsp\n"
 
         arg_regs = ["%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9"]
         loc = 0
         idx = 0
         for name, ty in zip(ast[1][0][::2], ast[1][0][1::2]):
             self.locals[-1][name] = (ty, loc)
-            self.code += f"\tmovq\t{arg_regs[idx]},\t-{loc}(%rbp)"; self.code += (" " * (56 - len_of_last_line(self.code)) + "; " + str(getframeinfo(currentframe()).lineno) + "\n")
+            self.code += f"\tmovq\t{arg_regs[idx]},\t-{loc}(%rbp)"; self.code += (" " * (56 - len_of_last_line(self.code)) + "# " + str(getframeinfo(currentframe()).lineno) + "\t" + str([reg for i, reg in enumerate(self.regs) if self.regs_used[i]]) + "\n")
             loc += self.sizeof(ty)
             idx += 1
 
@@ -253,11 +253,11 @@ class CG:
             ret_val = None
 
         if ret_val is not None:
-            self.code += "\tmovq\t" + ret_val + ",\t%rax"; self.code += (" " * (56 - len_of_last_line(self.code)) + "; " + str(getframeinfo(currentframe()).lineno) + "\n")
+            self.code += "\tmovq\t" + ret_val + ",\t%rax"; self.code += (" " * (56 - len_of_last_line(self.code)) + "# " + str(getframeinfo(currentframe()).lineno) + "\t" + str([reg for i, reg in enumerate(self.regs) if self.regs_used[i]]) + "\n")
 
         if locsize > 0:
-            self.code += "\tleave"; self.code += (" " * (56 - len_of_last_line(self.code)) + "; " + str(getframeinfo(currentframe()).lineno) + "\n")
-        self.code += "\tret"; self.code += (" " * (56 - len_of_last_line(self.code)) + "; " + str(getframeinfo(currentframe()).lineno) + "\n")
+            self.code += "\tleave"; self.code += (" " * (56 - len_of_last_line(self.code)) + "# " + str(getframeinfo(currentframe()).lineno) + "\t" + str([reg for i, reg in enumerate(self.regs) if self.regs_used[i]]) + "\n")
+        self.code += "\tret"; self.code += (" " * (56 - len_of_last_line(self.code)) + "# " + str(getframeinfo(currentframe()).lineno) + "\t" + str([reg for i, reg in enumerate(self.regs) if self.regs_used[i]]) + "\n")
 
         self.locals.pop()
 

@@ -1,4 +1,4 @@
-#define LNO (" " * (56 - len_of_last_line(self.code)) + "; " + str(getframeinfo(currentframe()).lineno) + "\n")
+#define LNO (" " * (56 - len_of_last_line(self.code)) + "# " + str(getframeinfo(currentframe()).lineno) + "\t" + str([reg for i, reg in enumerate(self.regs) if self.regs_used[i]]) + "\n")
 
 from pyparsing import *
 import os
