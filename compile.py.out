@@ -1,4 +1,10 @@
-#define LNO (" " * (56 - len_of_last_line(self.code)) + "; " + str(getframeinfo(currentframe()).lineno) + "\n")
+# 0 "compile.py"
+# 0 "<built-in>"
+# 0 "<command-line>"
+# 1 "/usr/include/stdc-predef.h" 1 3 4
+# 0 "<command-line>" 2
+# 1 "compile.py"
+
 
 from pyparsing import *
 import os
@@ -13,7 +19,7 @@ def len_of_last_line(code):
             col = (math.floor(col / 8) + 1) * 8
         else:
             col += 1
-    
+
     return col
 
 ident = Word(alphas + "_")
@@ -36,10 +42,10 @@ addexpr << (Group(mulexpr + (Literal("+") | Literal("-")) + addexpr).set_results
 
 funccall = Group(ident + OPAREN + ZeroOrMore(expr + COMMA) + Optional(expr) + CPAREN).set_results_name("funccall")
 
-eqfunc       =  Group(EQ + expr + SEMI).set_results_name("compoundexpr")
-compoundfunc =  compoundexpr | compoundsmt
+eqfunc = Group(EQ + expr + SEMI).set_results_name("compoundexpr")
+compoundfunc = compoundexpr | compoundsmt
 
-funcdef = Group(Suppress("fn") + ident + OPAREN + 
+funcdef = Group(Suppress("fn") + ident + OPAREN +
           Group(Group(ZeroOrMore(ident + COLON + type_ + COMMA) + Optional(ident + COLON + type_)) + CPAREN +
           Optional(Suppress("->") + type_)) + (compoundfunc | eqfunc)).set_results_name("funcdef")
 
@@ -108,7 +114,7 @@ class CG:
         self.regs_used = [False] * len(self.regs)
         self.funcs = []
         self.locals = []
-        
+
     def regalloc(self, reg_wanted=None):
         if reg_wanted != None:
             idx = self.regs.index(reg_wanted)
@@ -117,57 +123,57 @@ class CG:
                 return None
             self.regs_used[idx] = True
             return reg_wanted
-        
+
         for i, reg in enumerate(self.regs_used):
             if not reg:
                 self.regs_used[i] = True
                 return self.regs[i]
         print("Debug: request reg, all used")
         return None
-    
+
     def regfree(self, reg):
         if reg is None:
             print("Debug: may be a bug idk, reg was none")
         idx = self.regs.index(reg)
         self.regs_used[idx] = False
-        
+
     def alloc_arg_regs(self, num_args):
         args_order = ["%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9"]
         if len(args_order) < num_args:
             assert False, "stack args are not supported yet"
         return args_order[:num_args]
-        
+
     def is_reg_used(self, reg):
         return self.regs_used[self.regs.index(reg)]
-    
+
     def funccall(self, ast):
         funcname = ast[0]
         num_args = len(ast) - 1
-        
+
         caller_saved_regs = ["%rax", "%rcx", "%rdx", "%rsi", "%rdi", "%r8", "%r9"]
         saved_regs = []
         for reg in caller_saved_regs:
             if self.is_reg_used(reg):
                 saved_regs.append(reg)
-                self.code += "\tpushq\t" + reg; self.code += LNO
-        
+                self.code += "\tpushq\t" + reg; self.code += (" " * (56 - len_of_last_line(self.code)) + "; " + str(getframeinfo(currentframe()).lineno) + "\n")
+
         regs = self.alloc_arg_regs(num_args)
-        
+
         for i, arg in enumerate(ast[1:]):
             reg = self.expr(arg)
-            self.code += "\tmovq\t" + reg + ",\t" + regs[i]; self.code += LNO
+            self.code += "\tmovq\t" + reg + ",\t" + regs[i]; self.code += (" " * (56 - len_of_last_line(self.code)) + "; " + str(getframeinfo(currentframe()).lineno) + "\n")
             self.regfree(reg)
-        
-        self.code += "\tcall\t" + str(funcname); self.code += LNO
-        
+
+        self.code += "\tcall\t" + str(funcname); self.code += (" " * (56 - len_of_last_line(self.code)) + "; " + str(getframeinfo(currentframe()).lineno) + "\n")
+
         ret_reg = self.regalloc()
-        self.code += "\tmovq\t%rax,\t" + ret_reg; self.code += LNO
-        
+        self.code += "\tmovq\t%rax,\t" + ret_reg; self.code += (" " * (56 - len_of_last_line(self.code)) + "; " + str(getframeinfo(currentframe()).lineno) + "\n")
+
         for reg in saved_regs:
-            self.code += "\tpopq\t" + reg; self.code += LNO
-            
+            self.code += "\tpopq\t" + reg; self.code += (" " * (56 - len_of_last_line(self.code)) + "; " + str(getframeinfo(currentframe()).lineno) + "\n")
+
         return ret_reg
-    
+
     def binexpr(self, ast):
         lhs = self.expr(ast[0])
         op = ast[1]
@@ -175,28 +181,28 @@ class CG:
         if op == "+":
             self.code += "\taddq\t"
         elif op == "*":
-            self.code += "\timul\t"        
-        self.code += lhs + ",\t" + rhs; self.code += LNO
-        
+            self.code += "\timul\t"
+        self.code += lhs + ",\t" + rhs; self.code += (" " * (56 - len_of_last_line(self.code)) + "; " + str(getframeinfo(currentframe()).lineno) + "\n")
+
         self.regfree(lhs)
         return rhs
-        
+
     def int_literal(self, ast):
         reg = self.regalloc()
-        self.code += "\tmovq\t$" + str(ast[0]) + ",\t" + reg; self.code += LNO
+        self.code += "\tmovq\t$" + str(ast[0]) + ",\t" + reg; self.code += (" " * (56 - len_of_last_line(self.code)) + "; " + str(getframeinfo(currentframe()).lineno) + "\n")
         return reg
-    
+
     def ident(self, ast):
         name = ast[0]
         print(self.locals)
         if not name in self.locals[-1]:
             print("Undefined symbol '" + name + "'")
             raise SyntaxError()
-            
+
         reg = self.regalloc()
-        self.code += f"\tmovq\t-{self.locals[-1][name][1]}(%rbp),\t{reg}"; self.code += LNO
+        self.code += f"\tmovq\t-{self.locals[-1][name][1]}(%rbp),\t{reg}"; self.code += (" " * (56 - len_of_last_line(self.code)) + "; " + str(getframeinfo(currentframe()).lineno) + "\n")
         return reg
-            
+
     def expr(self, ast):
         print(ast)
         if ast.get_name() == "binexpr":
@@ -210,49 +216,49 @@ class CG:
         else:
             print("Not implemented: expression type " + ast.getName())
             exit(1)
-    
+
     def sizeof(self, ty):
         return 8 #everything is long for now
-        
+
     def smt(self, ast):
         retval = self.expr(ast)
         self.regfree(retval)
-    
+
     def funcdef(self, ast):
         self.funcs.append(str(ast[0]))
         locsize = sum(map(self.sizeof, ast[1][0][::2]))
-        
+
         self.locals.append({})
-        
+
         self.code += str(ast[0]) + ":\n"
         if locsize > 0:
-            self.code += "\tpushq\t%rbp"; self.code += LNO + f"\tmovq\t%rsp,\t%rbp\n\tsubq\t${locsize},\t%rsp\n"
-        
+            self.code += "\tpushq\t%rbp"; self.code += (" " * (56 - len_of_last_line(self.code)) + "; " + str(getframeinfo(currentframe()).lineno) + "\n") + f"\tmovq\t%rsp,\t%rbp\n\tsubq\t${locsize},\t%rsp\n"
+
         arg_regs = ["%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9"]
         loc = 0
         idx = 0
         for name, ty in zip(ast[1][0][::2], ast[1][0][1::2]):
             self.locals[-1][name] = (ty, loc)
-            self.code += f"\tmovq\t{arg_regs[idx]},\t-{loc}(%rbp)"; self.code += LNO
+            self.code += f"\tmovq\t{arg_regs[idx]},\t-{loc}(%rbp)"; self.code += (" " * (56 - len_of_last_line(self.code)) + "; " + str(getframeinfo(currentframe()).lineno) + "\n")
             loc += self.sizeof(ty)
             idx += 1
-        
+
         for smt in ast[2][:-1]:
             self.smt(smt)
-        
+
         if ast[2].get_name() == "compoundexpr":
             ret_val = self.expr(ast[2][-1])
         else:
             self.smt(ast[2][-1])
             ret_val = None
-        
+
         if ret_val is not None:
-            self.code += "\tmovq\t" + ret_val + ",\t%rax"; self.code += LNO
-        
+            self.code += "\tmovq\t" + ret_val + ",\t%rax"; self.code += (" " * (56 - len_of_last_line(self.code)) + "; " + str(getframeinfo(currentframe()).lineno) + "\n")
+
         if locsize > 0:
-            self.code += "\tleave"; self.code += LNO
-        self.code += "\tret"; self.code += LNO
-        
+            self.code += "\tleave"; self.code += (" " * (56 - len_of_last_line(self.code)) + "; " + str(getframeinfo(currentframe()).lineno) + "\n")
+        self.code += "\tret"; self.code += (" " * (56 - len_of_last_line(self.code)) + "; " + str(getframeinfo(currentframe()).lineno) + "\n")
+
         self.locals.pop()
 
     def gen(self, ast):
@@ -263,13 +269,11 @@ class CG:
             else:
                 print(f"Invalid syntax: Unexpected token '{smt[0]}'")
                 exit(1)
-        
+
         self.code = ".text\n" + "\n".join([".globl " + name + "\n.type " + name + ", @function" for name in self.funcs]) + "\n" + self.code
         with open("citrus.s", "w") as f:
             f.write(self.code)
         print(self.code)
-    
+
 a = CG()
 a.gen(parse(test_prog))
-
-    
