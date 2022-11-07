@@ -10,11 +10,19 @@ def LNO():
 
 def REGALLOC(reg_wanted=None):
     previous_frame = inspect.currentframe().f_back
+    self = previous_frame.f_locals.get("self")
+    return self.regalloc(reg_wanted, ALLOCDBG(previous_frame))
+
+def ALLOCDBG(frame=None):
+    if frame is None:
+        previous_frame = inspect.currentframe().f_back
+    else:
+        previous_frame = frame
     (filename, line_number, function_name, lines, index) = inspect.getframeinfo(previous_frame)
     self = previous_frame.f_locals.get("self")
     dbginfo = function_name + ":" + str(line_number)
-    return self.regalloc(reg_wanted, dbginfo)
-    
+    return dbginfo
+
 from pyparsing import *
 import os
 import math
@@ -110,8 +118,7 @@ class CG:
                 print("Debug: request reg " + reg_wanted + ", but already used")
                 return self.regalloc(dbginfo=dbginfo)
             
-            self.reg_allocator[reg_wanted] = dbginfo
-            self.set_reg_used(reg_wanted)
+            self.set_reg_used(reg_wanted, dbginfo)
             return reg_wanted
         
         for i, reg in enumerate(self.regs_used):
@@ -130,70 +137,94 @@ class CG:
     def is_reg_used(self, reg):
         return self.regs_used[self.regs.index(reg)]
     
-    def set_reg_used(self, reg):
-        self.reg_allocator[reg] = None
+    def set_reg_used(self, reg, dbg):
+        self.reg_allocator[reg] = dbg
         self.regs_used[self.regs.index(reg)] = True
     
     def funccall(self, ast, reg_hint=None):
         funcname = ast[0]
         num_args = len(ast) - 1
-        
         saved_regs = []
+
+        arg_regs = ARGS_REGS[:num_args]
+        
+        # try to get the args in the right registers
+        to_move = []
+        to_free = [] # free these regs later
+        for i, arg in enumerate(ast[1:]):
+            actual_reg = self.expr(arg, reg_hint=arg_regs[i])
+            # if they couldnæ then move them later
+            if actual_reg != arg_regs[i]:
+                to_move.append((actual_reg, arg_regs[i]))
+            to_free.append(actual_reg)
+        
+        # save caller saved regs
         for reg in CALLER_SAVED_REGS:
-            if self.is_reg_used(reg):
+            if self.is_reg_used(reg) and not reg in to_free:
                 saved_regs.append(reg)
                 self.code.append(("pushq", reg, LNO()))
-                self.regfree(reg)
-            
-        arg_regs = ARGS_REGS[:num_args]
-        for reg in arg_regs:
-            assert REGALLOC(reg) != None, "Could not allocate arg reg"
         
-        for i, arg in enumerate(ast[1:]):
-            self.expr(arg, reg_hint=arg_regs[i])
-                    
+        # move args that weren't in the right regs            
+        for from_, to in to_move:
+            self.code.append(("movq", from_, to, LNO()))
+        
+        # free args
+        for reg in to_free:
+            self.regfree(reg)
+
         self.code.append(("call", str(funcname), LNO()))
-        
-        if reg_hint != None:
-            ret_reg = REGALLOC()
+
+        # figure out what register to return        
+        if reg_hint != None and not self.is_reg_used(reg_hint):
+            # use the hint
+            ret_reg = REGALLOC(reg_hint)
         else:
-            ""# try to just allocate rax because it's already in rax
+            # try to just allocate rax because it's already in rax
             ret_reg = REGALLOC("%rax")
             if ret_reg is None:
-                ""# this is a bit annoying, already allocated
+                # this is a bit annoying, rax is already allocated
                 ret_reg = REGALLOC()
         
+        # only move ret value if it's not rax
         if ret_reg != "%rax":
             self.code.append(("movq", "%rax", ret_reg, LNO()))
         
-        
-        for reg in arg_regs:
-            self.regfree(reg);
-        
+        # restore saved regs
         for reg in saved_regs:
             self.code.append(("popq", reg, LNO()))
-            self.set_reg_used(reg)
             
         return ret_reg
     
     def binexpr(self, ast, reg_hint=None):
-        lhs = self.expr(ast[0])
         op = ast[1]
+        """if ast[0].get_name() == "int_literal" and ast[2].get_name() == "int_literal":
+            # constexpr
+            if op == "+":
+                return self.int_literal([int(ast[0][0]) + int(ast[2][0])])
+            if op == "-":
+                return self.int_literal([int(ast[0][0]) - int(ast[2][0])])
+            if op == "*":
+                return self.int_literal([int(ast[0][0]) * int(ast[2][0])])
+            if op == "/":
+                return self.int_literal([int(ast[0][0]) // int(ast[2][0])])"""
+
         rhs = self.expr(ast[2], reg_hint)
+        lhs = self.expr(ast[0])
         if op == "+":
             instr = "addq"
         elif op == "*":
             instr = "imulq"
+        elif op == "-":
+            instr = "subq"
+        elif op == "/":
+            instr = "idivq"
 
         self.code.append((instr, lhs, rhs, LNO()))
         self.regfree(lhs)
         return rhs
         
     def int_literal(self, ast, reg_hint=None):
-        if reg_hint is not None:
-            reg = reg_hint
-        else:
-            reg = REGALLOC()
+        reg = REGALLOC(reg_hint)
         self.code.append(("movq", "$" + str(ast[0]), reg, LNO()))
         return reg
     

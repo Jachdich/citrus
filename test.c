@@ -1,11 +1,18 @@
-void putd(long);
+#include <stdio.h>
+#include <stdint.h>
 
-long add_maybe(long a, long b) {
-  putd(a);
-  putd(b);
-  return a + b;
+struct Test {
+  int a;
+  int b;
+  int c;
+  int d;
+};
+
+struct Test fn() {
+  return (struct Test){1, 2, 3, 4};
 }
 
-void main() {
-  putd(add_maybe(1, 1));
+int main() {
+    struct Test test = fn();
+    return test.a + test.b + test.c + test.d;
 }

@@ -1,4 +1,4 @@
-fn funca(i: i64, j: i64) -> i64 = i * j * 2;
+fn funca(i: i64, j: i64) -> i64 = 3 * i * 4 * j * 2 * 10 * 100 * 1000 / 100;
 fn funcb(a: i64, b: i64) -> i64 = a + b;
 
 fn main() -> i64 {
