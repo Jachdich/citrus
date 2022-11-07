@@ -1,20 +1,24 @@
-#define LNO (" " * (56 - len_of_last_line(self.code)) + "# " + str(getframeinfo(currentframe()).lineno) + "\t" + str([reg for i, reg in enumerate(self.regs) if self.regs_used[i]]) + "\n")
+#define LNO() (str(getframeinfo(currentframe()).lineno) + "    " + str([reg for i, reg in enumerate(self.regs) if self.regs_used[i]]))
+#define REGALLOC() self.regalloc(dbg=str(getframeinfo(currentframe()).function + ":" + getframeinfo(currentframe()).lineno)
 
+def LNO():
+    previous_frame = inspect.currentframe().f_back
+    (filename, line_number, function_name, lines, index) = inspect.getframeinfo(previous_frame)
+    self = previous_frame.f_locals.get("self")
+    posinfo = function_name + ":" + str(line_number)
+    return posinfo + " " * (18 - len(posinfo)) + str([reg + " " + str(self.reg_allocator[reg]) for i, reg in enumerate(self.regs) if self.regs_used[i]])
+
+def REGALLOC(reg_wanted=None):
+    previous_frame = inspect.currentframe().f_back
+    (filename, line_number, function_name, lines, index) = inspect.getframeinfo(previous_frame)
+    self = previous_frame.f_locals.get("self")
+    dbginfo = function_name + ":" + str(line_number)
+    return self.regalloc(reg_wanted, dbginfo)
+    
 from pyparsing import *
 import os
 import math
-from inspect import currentframe, getframeinfo
-
-def len_of_last_line(code):
-    col = 0
-    for char in code.split("\n")[-1]:
-        print("char is: " + str(ord(char)))
-        if char == "\t":
-            col = (math.floor(col / 8) + 1) * 8
-        else:
-            col += 1
-    
-    return col
+import inspect
 
 ident = Word(alphas + "_")
 type_ = Literal("i64")
@@ -82,131 +86,138 @@ def run_tests():
     test("print 1 + 1;", ['print', ['1', '+', '1']]);
 
 
-test_prog = """
-
-fn add(a: i64, b: i64) -> i64 = a + b;
-
-fn add_maybe(a: i64, b: i64) -> i64 {
-    putd(a);
-    putd(b);
-    add(a, b)
-}
-fn main() -> i64 {
-    putd(add_maybe(1, 1));
-    0
-}
-
-"""
+with open("citrus.lime", "r") as f:
+    test_prog = f.read()
 
 def parse(text):
     return prog.parse_string(text, parse_all=True)
 
+ARGS_REGS = ["%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9"]
+CALLER_SAVED_REGS = ["%rax", "%rcx", "%rdx", "%rsi", "%rdi", "%r8", "%r9"]
+
 class CG:
     def __init__(self):
-        self.code = ""
+        self.code = []
         self.regs = ["%rax", "%rcx", "%rdx", "%rsi", "%rdi", "%r8", "%r9"]
         self.regs_used = [False] * len(self.regs)
+        self.reg_allocator = {}
         self.funcs = []
         self.locals = []
         
-    def regalloc(self, reg_wanted=None):
+    def regalloc(self, reg_wanted=None, dbginfo=None):
         if reg_wanted != None:
-            idx = self.regs.index(reg_wanted)
-            if self.regs_used[idx]:
-                print("Debug: request reg " + reg_wanted + ", but used")
-                return None
-            self.regs_used[idx] = True
+            if self.is_reg_used(reg_wanted):
+                print("Debug: request reg " + reg_wanted + ", but already used")
+                return self.regalloc(dbginfo=dbginfo)
+            
+            self.reg_allocator[reg_wanted] = dbginfo
+            self.set_reg_used(reg_wanted)
             return reg_wanted
         
         for i, reg in enumerate(self.regs_used):
             if not reg:
                 self.regs_used[i] = True
+                self.reg_allocator[self.regs[i]] = dbginfo
                 return self.regs[i]
         print("Debug: request reg, all used")
         return None
     
     def regfree(self, reg):
-        if reg is None:
-            print("Debug: may be a bug idk, reg was none")
         idx = self.regs.index(reg)
         self.regs_used[idx] = False
-        
-    def alloc_arg_regs(self, num_args):
-        args_order = ["%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9"]
-        if len(args_order) < num_args:
-            assert False, "stack args are not supported yet"
-        return args_order[:num_args]
+        del self.reg_allocator[reg]
         
     def is_reg_used(self, reg):
         return self.regs_used[self.regs.index(reg)]
     
-    def funccall(self, ast):
+    def set_reg_used(self, reg):
+        self.reg_allocator[reg] = None
+        self.regs_used[self.regs.index(reg)] = True
+    
+    def funccall(self, ast, reg_hint=None):
         funcname = ast[0]
         num_args = len(ast) - 1
         
-        caller_saved_regs = ["%rax", "%rcx", "%rdx", "%rsi", "%rdi", "%r8", "%r9"]
         saved_regs = []
-        for reg in caller_saved_regs:
+        for reg in CALLER_SAVED_REGS:
             if self.is_reg_used(reg):
                 saved_regs.append(reg)
-                self.code += "\tpushq\t" + reg; self.code += LNO
-        
-        regs = self.alloc_arg_regs(num_args)
+                self.code.append(("pushq", reg, LNO()))
+                self.regfree(reg)
+            
+        arg_regs = ARGS_REGS[:num_args]
+        for reg in arg_regs:
+            assert REGALLOC(reg) != None, "Could not allocate arg reg"
         
         for i, arg in enumerate(ast[1:]):
-            reg = self.expr(arg)
-            self.code += "\tmovq\t" + reg + ",\t" + regs[i]; self.code += LNO
-            self.regfree(reg)
+            self.expr(arg, reg_hint=arg_regs[i])
+                    
+        self.code.append(("call", str(funcname), LNO()))
         
-        self.code += "\tcall\t" + str(funcname); self.code += LNO
+        if reg_hint != None:
+            ret_reg = REGALLOC()
+        else:
+            ""# try to just allocate rax because it's already in rax
+            ret_reg = REGALLOC("%rax")
+            if ret_reg is None:
+                ""# this is a bit annoying, already allocated
+                ret_reg = REGALLOC()
         
-        ret_reg = self.regalloc()
-        self.code += "\tmovq\t%rax,\t" + ret_reg; self.code += LNO
+        if ret_reg != "%rax":
+            self.code.append(("movq", "%rax", ret_reg, LNO()))
+        
+        
+        for reg in arg_regs:
+            self.regfree(reg);
         
         for reg in saved_regs:
-            self.code += "\tpopq\t" + reg; self.code += LNO
+            self.code.append(("popq", reg, LNO()))
+            self.set_reg_used(reg)
             
         return ret_reg
     
-    def binexpr(self, ast):
+    def binexpr(self, ast, reg_hint=None):
         lhs = self.expr(ast[0])
         op = ast[1]
-        rhs = self.expr(ast[2])
+        rhs = self.expr(ast[2], reg_hint)
         if op == "+":
-            self.code += "\taddq\t"
+            instr = "addq"
         elif op == "*":
-            self.code += "\timul\t"        
-        self.code += lhs + ",\t" + rhs; self.code += LNO
-        
+            instr = "imulq"
+
+        self.code.append((instr, lhs, rhs, LNO()))
         self.regfree(lhs)
         return rhs
         
-    def int_literal(self, ast):
-        reg = self.regalloc()
-        self.code += "\tmovq\t$" + str(ast[0]) + ",\t" + reg; self.code += LNO
+    def int_literal(self, ast, reg_hint=None):
+        if reg_hint is not None:
+            reg = reg_hint
+        else:
+            reg = REGALLOC()
+        self.code.append(("movq", "$" + str(ast[0]), reg, LNO()))
         return reg
     
-    def ident(self, ast):
+    def ident(self, ast, reg_hint=None):
         name = ast[0]
-        print(self.locals)
         if not name in self.locals[-1]:
-            print("Undefined symbol '" + name + "'")
-            raise SyntaxError()
-            
-        reg = self.regalloc()
-        self.code += f"\tmovq\t-{self.locals[-1][name][1]}(%rbp),\t{reg}"; self.code += LNO
+            raise SyntaxError("Undefined symbol '" + name + "'")
+        
+        if reg_hint is not None:
+            reg = reg_hint
+        else:
+            reg = REGALLOC()
+        self.code.append(("movq", f"-{self.locals[-1][name][1]}(%rbp)", reg, LNO()))
         return reg
             
-    def expr(self, ast):
-        print(ast)
+    def expr(self, ast, reg_hint=None):
         if ast.get_name() == "binexpr":
-            return self.binexpr(ast)
+            return self.binexpr(ast, reg_hint=reg_hint)
         elif ast.get_name() == "int_literal":
-            return self.int_literal(ast)
+            return self.int_literal(ast, reg_hint=reg_hint)
         elif ast.get_name() == "funccall":
-            return self.funccall(ast)
+            return self.funccall(ast, reg_hint=reg_hint)
         elif ast.get_name() == "ident":
-            return self.ident(ast)
+            return self.ident(ast, reg_hint=reg_hint)
         else:
             print("Not implemented: expression type " + ast.getName())
             exit(1)
@@ -224,16 +235,18 @@ class CG:
         
         self.locals.append({})
         
-        self.code += str(ast[0]) + ":\n"
+        self.code.append((str(ast[0]) + ":", LNO()))
         if locsize > 0:
-            self.code += "\tpushq\t%rbp"; self.code += LNO + f"\tmovq\t%rsp,\t%rbp\n\tsubq\t${locsize},\t%rsp\n"
+            self.code.append(("pushq", "%rbp", LNO()))
+            self.code.append(("movq",  "%rsp",       "%rbp", LNO()))
+            self.code.append(("subq" , "$" + str(locsize), "%rsp", LNO()))
         
         arg_regs = ["%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9"]
         loc = 0
         idx = 0
         for name, ty in zip(ast[1][0][::2], ast[1][0][1::2]):
             self.locals[-1][name] = (ty, loc)
-            self.code += f"\tmovq\t{arg_regs[idx]},\t-{loc}(%rbp)"; self.code += LNO
+            self.code.append(("movq", arg_regs[idx], f"-{loc}(%rbp)", LNO()))
             loc += self.sizeof(ty)
             idx += 1
         
@@ -246,16 +259,20 @@ class CG:
             self.smt(ast[2][-1])
             ret_val = None
         
-        if ret_val is not None:
-            self.code += "\tmovq\t" + ret_val + ",\t%rax"; self.code += LNO
+        if ret_val is not None and ret_val != "%rax":
+            self.code.append(("movq", ret_val, "%rax", LNO()))
+            self.regfree(ret_val)
+        elif ret_val == "%rax":
+            self.regfree(ret_val)
         
         if locsize > 0:
-            self.code += "\tleave"; self.code += LNO
-        self.code += "\tret"; self.code += LNO
+            self.code.append(("addq", "$" + str(locsize), "%rsp", LNO()))
+            self.code.append(("popq", "%rbp", LNO()))
+        self.code.append(("ret", LNO()))
         
         self.locals.pop()
 
-    def gen(self, ast):
+    def gen(self, ast, debug=False):
         print(ast.dump())
         for smt in ast:
             if smt.get_name() == "funcdef":
@@ -264,12 +281,52 @@ class CG:
                 print(f"Invalid syntax: Unexpected token '{smt[0]}'")
                 exit(1)
         
-        self.code = ".text\n" + "\n".join([".globl " + name + "\n.type " + name + ", @function" for name in self.funcs]) + "\n" + self.code
-        with open("citrus.s", "w") as f:
-            f.write(self.code)
-        print(self.code)
+        fmt_code = ".text\n" + "\n".join([".globl " + name + "\n.type " + name + ", @function" for name in self.funcs])
+        fmt_code += "\n"
+        for line in self.code:
+            dbg = line[-1]
+            instr = line[:-1]
+            
+            ""# labels are unindented
+            if not (len(instr) == 1 and instr[0].endswith(":")):
+                curr_line = "    "
+            else:
+                curr_line = ""
+            
+            for i, ipart in enumerate(instr):
+                bit_of_line = ipart
+                if i < len(instr) - 1 and i != 0:
+                    bit_of_line += ","
+                curr_line += bit_of_line + " " * (12 - len(bit_of_line))
+            
+            if debug:
+                curr_line += " " * (48 - len(curr_line))
+                curr_line += "# " + dbg
+            fmt_code += curr_line + "\n"
+        return fmt_code
+if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser(
+                    prog="Citrus",
+                    description='Compile citrus code')
+    parser.add_argument("filename")
+    parser.add_argument("-o", "--output", help="Specify output file name. Default: <input filename>.s")
+    parser.add_argument("-g", "--debug", action="store_true", help="Enable debug comments in assembly")
+    args = parser.parse_args()
+    try:
+        with open(args.filename, "r") as f:
+            source = f.read()
+    except FileNotFoundError:
+        print(args.filename + ": No such file or directory")
+        exit(1)
     
-a = CG()
-a.gen(parse(test_prog))
-
+    a = CG()
+    out = a.gen(parse(source), args.debug)
+    print(out)
+    if args.output is None:
+        output_file = ".".join(input_file.split(".")[:-1]) + ".s"
+    else:
+        output_file = args.output
     
+    with open(output_file, "w") as f:
+        f.write(out)

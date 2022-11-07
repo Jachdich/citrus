@@ -4,8 +4,8 @@ run: citrus
 compile.py.out: compile.py
 	gcc -w -x c -E compile.py -o compile.py.out
 
-citrus.s: compile.py.out
-	python3 compile.py.out
+citrus.s: compile.py citrus.lime
+	python3 compile.py -o citrus.s -g citrus.lime
 
 %.o: %.c
 	gcc -c -o $@ $^
