@@ -27,9 +27,10 @@ from pyparsing import *
 import os
 import math
 import inspect
+from pprint import pprint
 
 ident = Word(alphas + "_")
-type_ = Literal("i64")
+type_ = Literal("i64") | Literal("i32") | Literal("u64") | Literal("u32") | ident
 integer = Combine(Optional("-") + Word("0123456789"))
 decimal = Combine(Optional("-") + Word("0123456789") + Literal(".") + Word("0123456789"))
 number = decimal | Group(integer).set_results_name("int_literal")
@@ -53,7 +54,7 @@ compoundfunc =  compoundexpr | compoundsmt
 
 funcdef = Group(Suppress("fn") + ident + OPAREN + 
           Group(Group(ZeroOrMore(ident + COLON + type_ + COMMA) + Optional(ident + COLON + type_)) + CPAREN +
-          Optional(Suppress("->") + type_)) + (compoundfunc | eqfunc)).set_results_name("funcdef")
+          Optional(Suppress("->") + type_)) + (compoundfunc | eqfunc | SEMI)).set_results_name("funcdef")
 
 expr << (funccall | addexpr)
 
@@ -103,13 +104,30 @@ def parse(text):
 ARGS_REGS = ["%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9"]
 CALLER_SAVED_REGS = ["%rax", "%rcx", "%rdx", "%rsi", "%rdi", "%r8", "%r9"]
 
+class ExprRes:
+    def __init__(self, reg, ty):
+        self.reg = reg
+        self.ty = ty
+
+class FuncSig:
+    def __init__(self, name, args, ret_ty):
+        self.name = name
+        self.args = args
+        self.ret_ty = ret_ty
+
+class LocalVar:
+    def __init__(self, name, ty, loc):
+        self.name = name
+        self.ty = ty
+        self.loc = loc
+
 class CG:
     def __init__(self):
         self.code = []
         self.regs = ["%rax", "%rcx", "%rdx", "%rsi", "%rdi", "%r8", "%r9"]
         self.regs_used = [False] * len(self.regs)
         self.reg_allocator = {}
-        self.funcs = []
+        self.globals = []
         self.locals = []
         
     def regalloc(self, reg_wanted=None, dbginfo=None):
@@ -140,10 +158,26 @@ class CG:
     def set_reg_used(self, reg, dbg):
         self.reg_allocator[reg] = dbg
         self.regs_used[self.regs.index(reg)] = True
+        
+    def get_global(self, name):
+        for sig in self.globals:
+            if sig.name == name:
+                return sig
+    def get_local(self, name):
+        for var in self.locals[-1]:
+            if var.name == name:
+                return var
     
     def funccall(self, ast, reg_hint=None):
         funcname = ast[0]
+        func_sig = self.get_global(funcname)
+        if func_sig is None:
+            raise SyntaxError(f"Unknown function '{funcname}'")
+            
         num_args = len(ast) - 1
+        if num_args != len(func_sig.args):
+            raise SyntaxError(f"Function '{funcname}' expects {len(func_sig.args)} args but {num_args} were given")
+        # TODO arg types
         saved_regs = []
 
         arg_regs = ARGS_REGS[:num_args]
@@ -152,7 +186,7 @@ class CG:
         to_move = []
         to_free = [] # free these regs later
         for i, arg in enumerate(ast[1:]):
-            actual_reg = self.expr(arg, reg_hint=arg_regs[i])
+            actual_reg, ty = self.expr(arg, reg_hint=arg_regs[i])
             # if they couldnæ then move them later
             if actual_reg != arg_regs[i]:
                 to_move.append((actual_reg, arg_regs[i]))
@@ -193,7 +227,7 @@ class CG:
         for reg in saved_regs:
             self.code.append(("popq", reg, LNO()))
             
-        return ret_reg
+        return (ret_reg, func_sig.ret_ty)
     
     def binexpr(self, ast, reg_hint=None):
         op = ast[1]
@@ -208,37 +242,80 @@ class CG:
             if op == "/":
                 return self.int_literal([int(ast[0][0]) // int(ast[2][0])])"""
 
-        rhs = self.expr(ast[2], reg_hint)
-        lhs = self.expr(ast[0])
-        if op == "+":
-            instr = "addq"
-        elif op == "*":
-            instr = "imulq"
-        elif op == "-":
-            instr = "subq"
-        elif op == "/":
-            instr = "idivq"
-
-        self.code.append((instr, lhs, rhs, LNO()))
+        rhs, rty = self.expr(ast[2], reg_hint)
+        lhs, lty = self.expr(ast[0])
+            
         self.regfree(lhs)
-        return rhs
+        int_tys = ["u64", "u32", "u16", "u8", "i64", "i32", "i16", "i8"]
+        if rty in ["f64", "f32"] or lty in ["f64", "f32"]:
+            if rty == "f64" or lty == "f64":
+                ty = "f64"
+            else:
+                ty = "f32"
+        elif rty in int_tys and lty in int_tys:
+            lsigned = lty[0] == "i"
+            rsigned = rty[0] == "i"
+            lbits = int(lty[1:])
+            rbits = int(rty[1:])
+            if lsigned or rsigned:
+                outsigned = "i"
+            else:
+                outsigned = "u"
+            
+            outbits = max(lbits, rbits)
+            ty = outsigned + str(outbits)
+        else:
+            raise SyntaxError(f"Incompatible types for operator '{op}': type '{lty}' and type '{rty}'")
+        
+        
+        
+        
+        if op == "/" or op == "%":
+            # TODO maybe unnecessary MOVs
+            if self.is_reg_used("%rdx"):
+                self.code.append(("pushq", "%rdx", LNO()))
+            if self.is_reg_used("%rax"):
+                self.code.append(("pushq", "%rax", LNO()))
+            self.code.append(("movq", lhs, "%rax", LNO()))
+            self.code.append(("cdq", LNO()))
+            self.code.append(("idivq", rhs, LNO()))
+            if op == "/":
+                self.code.append(("movq", "%rax", rhs, LNO()))
+            else:
+                self.code.append(("movq", "%rdx", rhs, LNO()))
+            if self.is_reg_used("%rdx"):
+                self.code.append(("popq", "%rax", LNO()))
+            if self.is_reg_used("%rax"):
+                self.code.append(("popq", "%rdx", LNO()))
+        else:
+            if op == "+":
+                instr = "addq"
+            elif op == "*":
+                instr = ("i" if ty[0] == "i" else "") + "mulq"
+            elif op == "-":
+                instr = "subq"
+
+            self.code.append((instr, lhs, rhs, LNO()))
+        
+        return rhs, ty
         
     def int_literal(self, ast, reg_hint=None):
         reg = REGALLOC(reg_hint)
         self.code.append(("movq", "$" + str(ast[0]), reg, LNO()))
-        return reg
-    
+        return reg, "i64" # TODO figure this out
+
     def ident(self, ast, reg_hint=None):
         name = ast[0]
-        if not name in self.locals[-1]:
+        var = self.get_local(name)
+        if var is None:
             raise SyntaxError("Undefined symbol '" + name + "'")
         
         if reg_hint is not None:
             reg = reg_hint
         else:
             reg = REGALLOC()
-        self.code.append(("movq", f"-{self.locals[-1][name][1]}(%rbp)", reg, LNO()))
-        return reg
+        self.code.append(("movq", f"-{var.loc}(%rbp)", reg, LNO()))
+        return reg, var.ty
             
     def expr(self, ast, reg_hint=None):
         if ast.get_name() == "binexpr":
@@ -254,17 +331,39 @@ class CG:
             exit(1)
     
     def sizeof(self, ty):
-        return 8 #everything is long for now
-        
+        return {"i64": 8, "i32": 4, "i16": 2, "i8": 1,
+                "u64": 8, "u32": 4, "u16": 2, "u8": 1,
+                "f64": 8, "f32": 4, "char": 1}[ty]
+
     def smt(self, ast):
-        retval = self.expr(ast)
+        retval, rettype = self.expr(ast)
         self.regfree(retval)
     
+    def is_valid_type(self, ty):
+        return ty in ["i32", "i64", "i16", "i8", "u64", "u32", "u16", "u8", "f64", "f32", "char", "void"]
+
+    def check_valid_type(self, ty):
+        if not self.is_valid_type(ty):
+            raise SyntaxError(f"Unknown type '{ty}'")
+    
     def funcdef(self, ast):
-        self.funcs.append(str(ast[0]))
-        locsize = sum(map(self.sizeof, ast[1][0][::2]))
+        if len(ast[1]) > 1:
+            ret_ty = ast[1][1]
+        else:
+            ret_ty = "void"
+
+        self.check_valid_type(ret_ty)
+        args = ast[1][0][1::2]        
+        sig = FuncSig(str(ast[0]), args, ret_ty)
+        self.globals.append(sig)
         
-        self.locals.append({})
+        if len(ast) < 3:
+            # it's a foward declaration
+            return
+        
+        locsize = sum(map(self.sizeof, ast[1][0][1::2]))
+        
+        self.locals.append([])
         
         self.code.append((str(ast[0]) + ":", LNO()))
         if locsize > 0:
@@ -276,7 +375,8 @@ class CG:
         loc = 0
         idx = 0
         for name, ty in zip(ast[1][0][::2], ast[1][0][1::2]):
-            self.locals[-1][name] = (ty, loc)
+            self.check_valid_type(ty)
+            self.locals[-1].append(LocalVar(name, ty, loc))
             self.code.append(("movq", arg_regs[idx], f"-{loc}(%rbp)", LNO()))
             loc += self.sizeof(ty)
             idx += 1
@@ -285,10 +385,14 @@ class CG:
             self.smt(smt)
         
         if ast[2].get_name() == "compoundexpr":
-            ret_val = self.expr(ast[2][-1])
+            ret_val, actual_ret_ty = self.expr(ast[2][-1])
         else:
             self.smt(ast[2][-1])
             ret_val = None
+            actual_ret_ty = "void"
+            
+        if actual_ret_ty != ret_ty:
+            raise SyntaxError(f"Function '{str(ast[0])}' should return type '{ret_ty}', but last expression is of type '{actual_ret_ty}'")
         
         if ret_val is not None and ret_val != "%rax":
             self.code.append(("movq", ret_val, "%rax", LNO()))
@@ -304,7 +408,7 @@ class CG:
         self.locals.pop()
 
     def gen(self, ast, debug=False):
-        print(ast.dump())
+        pprint(ast.as_list())
         for smt in ast:
             if smt.get_name() == "funcdef":
                 self.funcdef(smt)
@@ -312,7 +416,7 @@ class CG:
                 print(f"Invalid syntax: Unexpected token '{smt[0]}'")
                 exit(1)
         
-        fmt_code = ".text\n" + "\n".join([".globl " + name + "\n.type " + name + ", @function" for name in self.funcs])
+        fmt_code = ".text\n" + "\n".join([".globl " + sig.name + "\n.type " + sig.name + ", @function" for sig in self.globals])
         fmt_code += "\n"
         for line in self.code:
             dbg = line[-1]

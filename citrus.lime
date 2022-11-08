@@ -1,9 +1,11 @@
-fn funca(i: i64, j: i64) -> i64 = 3 * i * 4 * j * 2 * 10 * 100 * 1000 / 100;
-fn funcb(a: i64, b: i64) -> i64 = a + b;
+fn putd(num: i64);
+
+fn test(a: i64) {
+    putd(a);
+    test(a + 1);
+}
 
 fn main() -> i64 {
-    putd(funcb(1, 2));
-    putd(funcb(3, 4));
-    putd(funca(1+2, 3+4));
+    test(0);
     0
 }
