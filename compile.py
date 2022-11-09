@@ -28,24 +28,71 @@ import os
 import math
 import inspect
 from pprint import pprint
+from dataclasses import dataclass
 
-ident = Word(alphas + "_")
-type_ = Literal("i64") | Literal("i32") | Literal("u64") | Literal("u32") | ident
+class IntLit:
+    def __init__(self, tokens):
+        self.val = int(tokens[0])
+        
+    def from_val(val):
+        return IntLit([val])
+    
+    def __repr__(self):
+        return f"{self.val}IL"
+        
+    def get_name(self):
+        return "int_literal"
+
+class Ident:
+    def __init__(self, tokens):
+        self.val = tokens[0]
+    
+    def __repr__(self):
+        return f"Ident({self.val})"
+
+class BinOp:
+    def __init__(self, tokens):
+        self.op = tokens[0][1]
+        self.operands = tokens[0][::2]
+    
+    def __repr__(self):
+        return "BinOp(" + f" {self.op} ".join(map(str, self.operands)) + ")"
+        
+    # TODO maybe bad
+    def get_name(self):
+        return "binexpr"
+
+
+
+ident = Word(alphas + "_", alphanums + "_").set_parse_action(Ident)
+type_ = ident
 integer = Combine(Optional("-") + Word("0123456789"))
 decimal = Combine(Optional("-") + Word("0123456789") + Literal(".") + Word("0123456789"))
-number = decimal | Group(integer).set_results_name("int_literal")
+
+number = decimal | integer.set_parse_action(IntLit)
 
 OPAREN, CPAREN, COMMA, COLON, SEMI, EQ, OBRACE, CBRACE = map(Suppress, "(),:;={}")
 addexpr = Forward()
 mulexpr = Forward()
+cmpexpr = Forward()
 expr = Forward()
 smt = Forward()
-term = (OPAREN + expr + CPAREN) | number | Group(ident).set_results_name("ident")
+# term = (OPAREN + expr + CPAREN) | number | Group(ident).set_results_name("ident")
+term = number | ident
 compoundsmt = Group(OBRACE + ZeroOrMore(smt) + CBRACE).set_results_name("compoundsmt")
 compoundexpr = Group(OBRACE + ZeroOrMore(smt) + expr + CBRACE).set_results_name("compoundexpr")
 
-mulexpr << (Group(term + (Literal("*") | Literal("/") | Literal("%")) + mulexpr).set_results_name("binexpr")| term)
-addexpr << (Group(mulexpr + (Literal("+") | Literal("-")) + addexpr).set_results_name("binexpr") | mulexpr)
+
+# mulexpr << (Group(term +    (Literal("*") | Literal("/") | Literal("%")) + expr).set_results_name("binexpr") | term)
+# addexpr << (Group(mulexpr + (Literal("+") | Literal("-")) + expr).set_results_name("binexpr") | mulexpr)
+# cmpexpr << (Group(addexpr + (Literal(">=") | Literal("<=") | Literal("==") | Literal(">") | Literal("<")) + expr).set_results_name("binexpr") | addexpr)
+mathexpr = infix_notation(term,
+    [
+        (oneOf("* /"), 2, opAssoc.LEFT, BinOp),
+        (oneOf("+ -"), 2, opAssoc.LEFT, BinOp),
+        (oneOf(">= <= == > <"), 2, opAssoc.LEFT, BinOp),
+    ]
+)
 
 funccall = Group(ident + OPAREN + ZeroOrMore(expr + COMMA) + Optional(expr) + CPAREN).set_results_name("funccall")
 
@@ -56,7 +103,7 @@ funcdef = Group(Suppress("fn") + ident + OPAREN +
           Group(Group(ZeroOrMore(ident + COLON + type_ + COMMA) + Optional(ident + COLON + type_)) + CPAREN +
           Optional(Suppress("->") + type_)) + (compoundfunc | eqfunc | SEMI)).set_results_name("funcdef")
 
-expr << (funccall | addexpr)
+expr << (funccall | mathexpr)
 
 smt << (expr + Suppress(";"))
 prog = ZeroOrMore(funcdef)
@@ -80,34 +127,39 @@ def test(inp, out):
         print("\x1b[91mx\x1b[0m", inp, "=>", res, "!=", out, "(expected)")
 
 
-def run_tests():
-    test("0;", ["0"])
-    test("76139;", ["76139"])
-    test("32.33;", ["32.33"])
-    test("-341;", ["-341"])
-    test("-32.133;", ["-32.133"])
-    test("132 + 1.324;", [["132", "+", "1.324"]])
-    test("1 + 2 + 3;", [["1", "+", ["2", "+", "3"]]])
-    test("1 + 2 * 3;", [["1", "+", ["2", "*", "3"]]])
-    test("(1 + 2) * 3;", [[["1", "+", "2"], "*", "3"]])
-    test("1 * 2 + 3;", [[["1", "*", "2"], "+", "3"]])
-
-    test("print 1 + 1;", ['print', ['1', '+', '1']]);
-
-
-with open("citrus.lime", "r") as f:
-    test_prog = f.read()
-
 def parse(text):
     return prog.parse_string(text, parse_all=True)
 
 ARGS_REGS = ["%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9"]
 CALLER_SAVED_REGS = ["%rax", "%rcx", "%rdx", "%rsi", "%rdi", "%r8", "%r9"]
+INT_TYPES = ["i32", "i64", "i16", "i8", "u64", "u32", "u16", "u8"]
 
-class ExprRes:
-    def __init__(self, reg, ty):
-        self.reg = reg
-        self.ty = ty
+def sizeof(ty):
+    return {"i64": 8, "i32": 4, "i16": 2, "i8": 1,
+            "u64": 8, "u32": 4, "u16": 2, "u8": 1,
+            "f64": 8, "f32": 4, "char": 1}[ty]
+
+def is_valid_type(ty):
+    return ty in ["i32", "i64", "i16", "i8", "u64", "u32", "u16", "u8", "f64", "f32", "char", "void"]
+
+def check_valid_type(ty):
+    if not is_valid_type(ty):
+        raise SyntaxError(f"Unknown type '{ty}'")
+        
+def can_be_coerced(from_, to):
+    # same type always able to convert
+    if from_ == to: return True
+    
+    if from_ in INT_TYPES and to in INT_TYPES:
+        if from_[0] != to[0]:
+            return False # can't coerce signed to unsigned or vice versa
+        fbits = int(from_[1:])
+        tbits = int(to[1:])
+        # can coerce if dest bits >= source bits
+        return tbits >= fbits
+    
+    # TODO support other datatypes
+    return False
 
 class FuncSig:
     def __init__(self, name, args, ret_ty):
@@ -124,11 +176,12 @@ class LocalVar:
 class CG:
     def __init__(self):
         self.code = []
-        self.regs = ["%rax", "%rcx", "%rdx", "%rsi", "%rdi", "%r8", "%r9"]
+        self.regs = ["%rax", "%rcx", "%rdx", "%rsi", "%rdi", "%r8", "%r9", "%r10", "%r11", "%r12", "%r13", "%r14", "%r15"]
         self.regs_used = [False] * len(self.regs)
         self.reg_allocator = {}
         self.globals = []
         self.locals = []
+        self.O_CONSTANT_FOLDING = False
         
     def regalloc(self, reg_wanted=None, dbginfo=None):
         if reg_wanted != None:
@@ -148,6 +201,9 @@ class CG:
         return None
     
     def regfree(self, reg):
+        previous_frame = inspect.currentframe().f_back
+        filename, line_number, function_name, lines, index = inspect.getframeinfo(previous_frame)
+        print("Debug: freeing " + reg + " called from " + function_name + ":" + str(line_number))
         idx = self.regs.index(reg)
         self.regs_used[idx] = False
         del self.reg_allocator[reg]
@@ -170,7 +226,7 @@ class CG:
     
     def funccall(self, ast, reg_hint=None):
         funcname = ast[0]
-        func_sig = self.get_global(funcname)
+        func_sig = self.get_global(funcname.val)
         if func_sig is None:
             raise SyntaxError(f"Unknown function '{funcname}'")
             
@@ -206,7 +262,7 @@ class CG:
         for reg in to_free:
             self.regfree(reg)
 
-        self.code.append(("call", str(funcname), LNO()))
+        self.code.append(("call", funcname.val, LNO()))
 
         # figure out what register to return        
         if reg_hint != None and not self.is_reg_used(reg_hint):
@@ -229,80 +285,118 @@ class CG:
             
         return (ret_reg, func_sig.ret_ty)
     
+    def int_div(self, lhs, rhs, signed, op):
+        # TODO test this bit
+        if rhs == "%rdx" or rhs == "%rax":
+            # big problem, as rdx and rax are used for dividend
+            # first, force the result not to be in rax or rdx
+            to_free = []
+            if not self.is_reg_used("%rax"): to_free.append("%rax"); self.set_reg_used("%rax", None)
+            if not self.is_reg_used("%rdx"): to_free.append("%rdx"); self.set_reg_used("%rdx", None)
+            # second, allocate new register
+            old_rhs = rhs
+            rhs = REGALLOC()
+            # third, free old rhs
+            self.regfree(old_rhs)
+            # fourth, free the previously allocated registers
+            for reg in to_free:
+                self.regfree(reg)
+            
+        # save regs that are used for dividend
+        if self.is_reg_used("%rdx"):
+            self.code.append(("pushq", "%rdx", LNO()))
+        if self.is_reg_used("%rax"):
+            self.code.append(("pushq", "%rax", LNO()))
+            
+        # if it's not already, dividend goes in rax
+        if lhs != "%rax": self.code.append(("movq", lhs, "%rax", LNO()))
+        # sign extend rax to rdx
+        self.code.append(("cdq", LNO()))
+        self.code.append((("i" if signed else "") + "divq", rhs, LNO()))
+        
+        if op == "/":
+            # quotient is in rax
+            self.code.append(("movq", "%rax", rhs, LNO()))
+        else:
+            # remainder is in rdx
+            self.code.append(("movq", "%rdx", rhs, LNO()))
+            
+        # unsave regs again
+        if self.is_reg_used("%rdx"):
+            self.code.append(("popq", "%rdx", LNO()))
+        if self.is_reg_used("%rax"):
+            self.code.append(("popq", "%rax", LNO()))
+
     def binexpr(self, ast, reg_hint=None):
-        op = ast[1]
-        """if ast[0].get_name() == "int_literal" and ast[2].get_name() == "int_literal":
+        
+        op = ast.op
+        
+        """"
+        if rhs_expr.get_name() == "int_literal" and lhs_expr.get_name() == "int_literal" and self.O_CONSTANT_FOLDING:
             # constexpr
             if op == "+":
-                return self.int_literal([int(ast[0][0]) + int(ast[2][0])])
+                return self.int_literal(IntLit.from_val(ast.lhs + ast.rhs))
             if op == "-":
-                return self.int_literal([int(ast[0][0]) - int(ast[2][0])])
+                return self.int_literal(IntLit.from_val(ast.lhs - ast.rhs))
             if op == "*":
-                return self.int_literal([int(ast[0][0]) * int(ast[2][0])])
+                return self.int_literal(IntLit.from_val(ast.lhs * ast.rhs))
             if op == "/":
-                return self.int_literal([int(ast[0][0]) // int(ast[2][0])])"""
-
-        rhs, rty = self.expr(ast[2], reg_hint)
-        lhs, lty = self.expr(ast[0])
-            
-        self.regfree(lhs)
-        int_tys = ["u64", "u32", "u16", "u8", "i64", "i32", "i16", "i8"]
-        if rty in ["f64", "f32"] or lty in ["f64", "f32"]:
-            if rty == "f64" or lty == "f64":
-                ty = "f64"
-            else:
-                ty = "f32"
-        elif rty in int_tys and lty in int_tys:
-            lsigned = lty[0] == "i"
-            rsigned = rty[0] == "i"
-            lbits = int(lty[1:])
-            rbits = int(rty[1:])
-            if lsigned or rsigned:
-                outsigned = "i"
-            else:
-                outsigned = "u"
-            
-            outbits = max(lbits, rbits)
-            ty = outsigned + str(outbits)
+                return self.int_literal(IntLit.from_val(ast.lhs // ast.rhs))
+        """
+        # try and get dividend in rax, then less work later
+        if op == "/":
+            lhs_reg = "%rax"
         else:
-            raise SyntaxError(f"Incompatible types for operator '{op}': type '{lty}' and type '{rty}'")
+            lhs_reg = None
         
+        lhs, lty = self.expr(ast.operands[0], lhs_reg)
+        for rhs_expr in ast.operands[1:]:
+            rhs, rty = self.expr(rhs_expr, reg_hint)
         
-        
-        
-        if op == "/" or op == "%":
-            # TODO maybe unnecessary MOVs
-            if self.is_reg_used("%rdx"):
-                self.code.append(("pushq", "%rdx", LNO()))
-            if self.is_reg_used("%rax"):
-                self.code.append(("pushq", "%rax", LNO()))
-            self.code.append(("movq", lhs, "%rax", LNO()))
-            self.code.append(("cdq", LNO()))
-            self.code.append(("idivq", rhs, LNO()))
-            if op == "/":
-                self.code.append(("movq", "%rax", rhs, LNO()))
+            self.regfree(lhs)
+            int_tys = ["u64", "u32", "u16", "u8", "i64", "i32", "i16", "i8"]
+            if rty in ["f64", "f32"] or lty in ["f64", "f32"]:
+                raise SyntaxError("Floats not supported yet")
+                if rty == "f64" or lty == "f64":
+                    ty = "f64"
+                else:
+                    ty = "f32"
+            elif rty in int_tys and lty in int_tys:
+                lsigned = lty[0] == "i"
+                rsigned = rty[0] == "i"
+                lbits = int(lty[1:])
+                rbits = int(rty[1:])
+                if lsigned or rsigned:
+                    outsigned = "i"
+                    signed = True
+                else:
+                    outsigned = "u"
+                    signed = False
+            
+                outbits = max(lbits, rbits)
+                ty = outsigned + str(outbits)
             else:
-                self.code.append(("movq", "%rdx", rhs, LNO()))
-            if self.is_reg_used("%rdx"):
-                self.code.append(("popq", "%rax", LNO()))
-            if self.is_reg_used("%rax"):
-                self.code.append(("popq", "%rdx", LNO()))
-        else:
-            if op == "+":
-                instr = "addq"
-            elif op == "*":
-                instr = ("i" if ty[0] == "i" else "") + "mulq"
-            elif op == "-":
-                instr = "subq"
-
-            self.code.append((instr, lhs, rhs, LNO()))
+                raise SyntaxError(f"Incompatible types for operator '{op}': type '{lty}' and type '{rty}'")
         
+            if op == "/" or op == "%":
+                self.int_div(lhs, rhs, signed, op)        
+            else:
+                if op == "+":
+                    instr = "addq"
+                elif op == "*":
+                    instr = ("i" if signed else "") + "mulq"
+                elif op == "-":
+                    instr = "subq"
+                self.code.append((instr, lhs, rhs, LNO()))
+                
+            lhs, lty = rhs, rty
+
         return rhs, ty
         
     def int_literal(self, ast, reg_hint=None):
         reg = REGALLOC(reg_hint)
-        self.code.append(("movq", "$" + str(ast[0]), reg, LNO()))
-        return reg, "i64" # TODO figure this out
+        self.code.append(("movq", "$" + str(ast.val), reg, LNO()))
+        return reg, "i32" # TODO figure this out
 
     def ident(self, ast, reg_hint=None):
         name = ast[0]
@@ -330,42 +424,33 @@ class CG:
             print("Not implemented: expression type " + ast.getName())
             exit(1)
     
-    def sizeof(self, ty):
-        return {"i64": 8, "i32": 4, "i16": 2, "i8": 1,
-                "u64": 8, "u32": 4, "u16": 2, "u8": 1,
-                "f64": 8, "f32": 4, "char": 1}[ty]
-
     def smt(self, ast):
         retval, rettype = self.expr(ast)
         self.regfree(retval)
     
-    def is_valid_type(self, ty):
-        return ty in ["i32", "i64", "i16", "i8", "u64", "u32", "u16", "u8", "f64", "f32", "char", "void"]
-
-    def check_valid_type(self, ty):
-        if not self.is_valid_type(ty):
-            raise SyntaxError(f"Unknown type '{ty}'")
-    
     def funcdef(self, ast):
+        # get return type
         if len(ast[1]) > 1:
-            ret_ty = ast[1][1]
+            ret_ty = ast[1][1].val
         else:
             ret_ty = "void"
 
-        self.check_valid_type(ret_ty)
-        args = ast[1][0][1::2]        
-        sig = FuncSig(str(ast[0]), args, ret_ty)
+        check_valid_type(ret_ty)
+        args = ast[1][0][1::2]
+        sig = FuncSig(ast[0].val, args, ret_ty)
         self.globals.append(sig)
         
         if len(ast) < 3:
             # it's a foward declaration
             return
         
-        locsize = sum(map(self.sizeof, ast[1][0][1::2]))
+        # size of locals (currently just args)
+        locsize = sum(map(sizeof, ast[1][0][1::2]))
         
         self.locals.append([])
         
-        self.code.append((str(ast[0]) + ":", LNO()))
+        # move locals to their variable positions
+        self.code.append((ast[0].val + ":", LNO()))
         if locsize > 0:
             self.code.append(("pushq", "%rbp", LNO()))
             self.code.append(("movq",  "%rsp",       "%rbp", LNO()))
@@ -374,11 +459,12 @@ class CG:
         arg_regs = ["%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9"]
         loc = 0
         idx = 0
+        # add locals to symtable
         for name, ty in zip(ast[1][0][::2], ast[1][0][1::2]):
-            self.check_valid_type(ty)
+            check_valid_type(ty)
             self.locals[-1].append(LocalVar(name, ty, loc))
             self.code.append(("movq", arg_regs[idx], f"-{loc}(%rbp)", LNO()))
-            loc += self.sizeof(ty)
+            loc += sizeof(ty)
             idx += 1
         
         for smt in ast[2][:-1]:
@@ -391,7 +477,7 @@ class CG:
             ret_val = None
             actual_ret_ty = "void"
             
-        if actual_ret_ty != ret_ty:
+        if not can_be_coerced(actual_ret_ty, ret_ty):
             raise SyntaxError(f"Function '{str(ast[0])}' should return type '{ret_ty}', but last expression is of type '{actual_ret_ty}'")
         
         if ret_val is not None and ret_val != "%rax":
@@ -416,6 +502,9 @@ class CG:
                 print(f"Invalid syntax: Unexpected token '{smt[0]}'")
                 exit(1)
         
+        return self.format_code(debug)
+        
+    def format_code(self, debug=False):
         fmt_code = ".text\n" + "\n".join([".globl " + sig.name + "\n.type " + sig.name + ", @function" for sig in self.globals])
         fmt_code += "\n"
         for line in self.code:
@@ -439,8 +528,9 @@ class CG:
                 curr_line += "# " + dbg
             fmt_code += curr_line + "\n"
         return fmt_code
+
 if __name__ == "__main__":
-    import argparse
+    import argparse, sys, traceback
     parser = argparse.ArgumentParser(
                     prog="Citrus",
                     description='Compile citrus code')
@@ -456,6 +546,17 @@ if __name__ == "__main__":
         exit(1)
     
     a = CG()
+    
+    def exception_hook(exctype, value, tb):
+        traceback_formated = traceback.format_exception(exctype, value, tb)
+        traceback_string = "".join(traceback_formated)
+        print(traceback_string, file=sys.stderr)
+        print(a.format_code(True))
+        
+        sys.exit(1)
+        
+    sys.excepthook = exception_hook
+
     out = a.gen(parse(source), args.debug)
     print(out)
     if args.output is None:

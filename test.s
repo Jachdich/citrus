@@ -1,8 +1,8 @@
 	.file	"test.c"
 	.text
-	.globl	fn
-	.type	fn, @function
-fn:
+	.globl	main
+	.type	main, @function
+main:
 .LFB0:
 	.cfi_startproc
 	pushq	%rbp
@@ -10,62 +10,30 @@ fn:
 	.cfi_offset 6, -16
 	movq	%rsp, %rbp
 	.cfi_def_cfa_register 6
-	pushq	%rbx
-	.cfi_offset 3, -24
-	movq	%rax, %rsi
-	movabsq	$-4294967296, %rcx
-	andq	%rsi, %rcx
-	orq	$1, %rcx
-	movq	%rcx, %rax
-	movq	%rax, %rcx
-	movl	%ecx, %esi
-	movabsq	$8589934592, %rcx
-	orq	%rsi, %rcx
-	movq	%rcx, %rax
-	movq	%rdx, %rsi
-	movabsq	$-4294967296, %rcx
-	andq	%rsi, %rcx
-	orq	$3, %rcx
-	movq	%rcx, %rdx
-	movq	%rdx, %rcx
-	movl	%ecx, %esi
-	movabsq	$17179869184, %rcx
-	orq	%rsi, %rcx
-	movq	%rcx, %rdx
-	movq	-8(%rbp), %rbx
-	leave
+	movsd	.LC0(%rip), %xmm0
+	movsd	%xmm0, -16(%rbp)
+	movsd	.LC1(%rip), %xmm0
+	movsd	%xmm0, -8(%rbp)
+	movsd	-16(%rbp), %xmm0
+	cvttsd2sil	%xmm0, %eax
+	pxor	%xmm0, %xmm0
+	cvtsi2sdl	%eax, %xmm0
+	addsd	-8(%rbp), %xmm0
+	cvttsd2sil	%xmm0, %eax
+	popq	%rbp
 	.cfi_def_cfa 7, 8
 	ret
 	.cfi_endproc
 .LFE0:
-	.size	fn, .-fn
-	.globl	main
-	.type	main, @function
-main:
-.LFB1:
-	.cfi_startproc
-	pushq	%rbp
-	.cfi_def_cfa_offset 16
-	.cfi_offset 6, -16
-	movq	%rsp, %rbp
-	.cfi_def_cfa_register 6
-	subq	$16, %rsp
-	movl	$0, %eax
-	call	fn
-	movq	%rax, -16(%rbp)
-	movq	%rdx, -8(%rbp)
-	movl	-16(%rbp), %edx
-	movl	-12(%rbp), %eax
-	addl	%eax, %edx
-	movl	-8(%rbp), %eax
-	addl	%eax, %edx
-	movl	-4(%rbp), %eax
-	addl	%edx, %eax
-	leave
-	.cfi_def_cfa 7, 8
-	ret
-	.cfi_endproc
-.LFE1:
 	.size	main, .-main
+	.section	.rodata
+	.align 8
+.LC0:
+	.long	0
+	.long	1079066624
+	.align 8
+.LC1:
+	.long	0
+	.long	1081753600
 	.ident	"GCC: (GNU) 12.2.0"
 	.section	.note.GNU-stack,"",@progbits

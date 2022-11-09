@@ -3,13 +3,12 @@
 .type putd, @function
 .globl main
 .type main, @function
-main:                                           # funcdef:368       []
-    movq        $6,         %rdi                # int_literal:304   ['%rdi int_literal:303']
-    movq        $10,        %rax                # int_literal:304   ['%rax int_literal:303', '%rdi int_literal:303']
-    movq        %rax,       %rax                # binexpr:279       ['%rdi int_literal:303']
-    cdq                                         # binexpr:280       ['%rdi int_literal:303']
-    idivq       %rdi                            # binexpr:281       ['%rdi int_literal:303']
-    movq        %rdx,       %rdi                # binexpr:285       ['%rdi int_literal:303']
-    call        putd                            # funccall:209      []
-    movq        $0,         %rax                # int_literal:304   ['%rax int_literal:303']
-    ret                                         # funcdef:406       []
+main:                                           # funcdef:444       []
+    movq        $1000000,   %rax                # int_literal:389   ['%rax int_literal:388']
+    movq        $10,        %rdi                # int_literal:389   ['%rax int_literal:388', '%rdi int_literal:388']
+    cdq                                         # int_div:312       ['%rdi int_literal:388']
+    idivq       %rdi                            # int_div:313       ['%rdi int_literal:388']
+    movq        %rax,       %rdi                # int_div:317       ['%rdi int_literal:388']
+    call        putd                            # funccall:263      []
+    movq        $0,         %rax                # int_literal:389   ['%rax int_literal:388']
+    ret                                         # funcdef:483       []
