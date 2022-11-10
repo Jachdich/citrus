@@ -1,0 +1,15 @@
+import "liblemon/io.lime"
+
+fn main() -> i32 {
+    let a;
+    a = 10;
+    let b = 10;
+    let c: i64;
+    c = 10;
+    let d: i64 = 10;
+    putd(a);
+    putd(b);
+    putd(c);
+    putd(d);
+    0
+}

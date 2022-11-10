@@ -1,10 +1,12 @@
 PYTHON = python3.9
 
+SOURCES := $(shell find src -maxdepth 1 -name "*.lime" -type f)
+OBJECTS := $(patsubst src/%,build/%,$(SOURCES:.lime=.o))
 run: citrus
 	./citrus
 	
-build/citrus.s: compile.py citrus.lime
-	$(PYTHON) compile.py -o build/citrus.s -g citrus.lime
+build/%.s: src/%.lime
+	$(PYTHON) compile.py -o $@ -g $^
 
 build/%.o: build/%.s
 	gcc -c -o $@ $^
@@ -12,5 +14,10 @@ build/%.o: build/%.s
 liblemon/liblemon.a:
 	+make -C liblemon
 
-citrus: build/citrus.o liblemon/liblemon.a
-	gcc -o citrus build/citrus.o -Lliblemon -llemon
+citrus: $(OBJECTS) liblemon/liblemon.a
+	gcc -o citrus $^ -Lliblemon -llemon
+
+clean:
+	rm -rf build/* citrus
+
+.PHONY: clean

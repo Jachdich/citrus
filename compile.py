@@ -231,7 +231,6 @@ class CG:
         return rhs
 
     def binexpr(self, ast, reg_hint=None):
-        
         op = ast.op
         
         """"
@@ -250,7 +249,7 @@ class CG:
         if op == "/":
             lhs_hint = RegHint(wanted="%rax")
         else:
-            lhs_reg = RegHint()
+            lhs_hint = RegHint()
         
         lhs, lty = self.expr(ast.operands[0], lhs_hint)
         for i, rhs_expr in enumerate(ast.operands[1:]):
@@ -330,36 +329,41 @@ class CG:
         elif ast.get_name() == "ident":
             return self.ident(ast, reg_hint=reg_hint)
         else:
-            print("Not implemented: expression type " + ast.getName())
+            print("Not implemented: expression type " + ast.get_name())
             exit(1)
     
     def smt(self, ast):
         retval, rettype = self.expr(ast)
         self.regfree(retval)
     
-    def funcdef(self, ast):
-        # get return type
-        if len(ast[1]) > 1:
-            ret_ty = ast[1][1].val
-        else:
+    def gen_fn_sig(self, ast):
+        ret_ty = ast.ret_ty
+        if ret_ty is None:
             ret_ty = "void"
-
+        
         check_valid_type(ret_ty)
-        args = ast[1][0][1::2]
-        sig = FuncSig(ast[0].val, args, ret_ty)
+        args = [a[1] for a in ast.args] # just types
+        sig = FuncSig(ast.name, args, ret_ty)
+        return sig
+   
+    def funcdef(self, ast):
+        sig = self.gen_fn_sig(ast)
         self.globals.append(sig)
         
-        if len(ast) < 3:
-            # it's a foward declaration
+        if ast.forward_decl:
             return
         
+        ret_ty = ast.ret_ty
+        if ret_ty is None:
+            ret_ty = "void"
+
         # size of locals (currently just args)
-        locsize = sum(map(sizeof, ast[1][0][1::2]))
+        locsize = sum([sizeof(a[1]) for a in ast.args])
         
         self.locals.append([])
         
         # move locals to their variable positions
-        self.code_append((ast[0].val + ":",))
+        self.code_append((ast.name + ":",))
         if locsize > 0:
             self.code_append(("pushq", "%rbp"))
             self.code_append(("movq",  "%rsp",       "%rbp"))
@@ -369,20 +373,20 @@ class CG:
         loc = 0
         idx = 0
         # add locals to symtable
-        for name, ty in zip(ast[1][0][::2], ast[1][0][1::2]):
+        for name, ty in ast.args:
             check_valid_type(ty)
             self.locals[-1].append(LocalVar(name, ty, loc))
             self.code_append(("movq", arg_regs[idx], f"-{loc}(%rbp)"))
             loc += sizeof(ty)
             idx += 1
         
-        for smt in ast[2][:-1]:
+        for smt in ast.body[:-1]:
             self.smt(smt)
         
-        if ast[2].get_name() == "compoundexpr":
-            ret_val, actual_ret_ty = self.expr(ast[2][-1])
+        if ast.body.get_name() == "compoundexpr":
+            ret_val, actual_ret_ty = self.expr(ast.body[-1])
         else:
-            self.smt(ast[2][-1])
+            self.smt(ast.body[-1])
             ret_val = None
             actual_ret_ty = "void"
             
@@ -401,14 +405,33 @@ class CG:
         self.code_append(("ret",))
         
         self.locals.pop()
+        
+    def importsmt(self, smt, already_imported):
+        if not os.path.isfile(smt.fname):
+            raise ImportError(f"{smt.fname}: No such file or directlry")
+        with open(smt.fname, "r") as f:
+            source = f.read()
+            
+        already_imported.append(smt.fname)
+        
+        ast = parse(source)
+        for smt in ast:
+            if smt.get_name() == "funcdef":
+                self.globals.append(self.gen_fn_sig(smt))
+            elif smt.get_name() == "import" and smt.fname not in already_imported:
+                # recursively import anything we haven't already
+                self.importsmt(smt, already_imported)
+        
 
-    def gen(self, ast, debug=False):
+    def gen(self, ast, fname, debug=False):
         pprint(ast.as_list())
         for smt in ast:
             if smt.get_name() == "funcdef":
                 self.funcdef(smt)
+            elif smt.get_name() == "import":
+                self.importsmt(smt, [fname])
             else:
-                print(f"Invalid syntax: Unexpected token '{smt[0]}'")
+                print(f"Invalid syntax: Unexpected token '{smt}'")
                 exit(1)
         
         return self.format_code(debug)
@@ -491,7 +514,7 @@ if __name__ == "__main__":
         
     sys.excepthook = exception_hook
 
-    out = a.gen(parse(source), args.debug)
+    out = a.gen(parse(source), args.filename, args.debug)
     print(out)
     if args.output is None:
         output_file = ".".join(input_file.split(".")[:-1]) + ".s"
