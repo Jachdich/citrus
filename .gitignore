@@ -1,3 +1,9 @@
 *.workspace
 *~
 .codelite
+tests
+build
+test.c
+test.s
+test.o
+__pycache__

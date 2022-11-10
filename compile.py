@@ -1,134 +1,14 @@
-#define LNO() (str(getframeinfo(currentframe()).lineno) + "    " + str([reg for i, reg in enumerate(self.regs) if self.regs_used[i]]))
-#define REGALLOC() self.regalloc(dbg=str(getframeinfo(currentframe()).function + ":" + getframeinfo(currentframe()).lineno)
-
-def LNO():
-    previous_frame = inspect.currentframe().f_back
-    (filename, line_number, function_name, lines, index) = inspect.getframeinfo(previous_frame)
-    self = previous_frame.f_locals.get("self")
-    posinfo = function_name + ":" + str(line_number)
-    return posinfo + " " * (18 - len(posinfo)) + str([reg + " " + str(self.reg_allocator[reg]) for i, reg in enumerate(self.regs) if self.regs_used[i]])
-
-def REGALLOC(reg_wanted=None):
-    previous_frame = inspect.currentframe().f_back
-    self = previous_frame.f_locals.get("self")
-    return self.regalloc(reg_wanted, ALLOCDBG(previous_frame))
-
-def ALLOCDBG(frame=None):
-    if frame is None:
-        previous_frame = inspect.currentframe().f_back
-    else:
-        previous_frame = frame
-    (filename, line_number, function_name, lines, index) = inspect.getframeinfo(previous_frame)
-    self = previous_frame.f_locals.get("self")
-    dbginfo = function_name + ":" + str(line_number)
-    return dbginfo
-
-from pyparsing import *
 import os
 import math
 import inspect
 from pprint import pprint
-from dataclasses import dataclass
+from parser import parse
 
-class IntLit:
-    def __init__(self, tokens):
-        self.val = int(tokens[0])
-        
-    def from_val(val):
-        return IntLit([val])
-    
-    def __repr__(self):
-        return f"{self.val}IL"
-        
-    def get_name(self):
-        return "int_literal"
-
-class Ident:
-    def __init__(self, tokens):
-        self.val = tokens[0]
-    
-    def __repr__(self):
-        return f"Ident({self.val})"
-
-class BinOp:
-    def __init__(self, tokens):
-        self.op = tokens[0][1]
-        self.operands = tokens[0][::2]
-    
-    def __repr__(self):
-        return "BinOp(" + f" {self.op} ".join(map(str, self.operands)) + ")"
-        
-    # TODO maybe bad
-    def get_name(self):
-        return "binexpr"
-
-
-
-ident = Word(alphas + "_", alphanums + "_").set_parse_action(Ident)
-type_ = ident
-integer = Combine(Optional("-") + Word("0123456789"))
-decimal = Combine(Optional("-") + Word("0123456789") + Literal(".") + Word("0123456789"))
-
-number = decimal | integer.set_parse_action(IntLit)
-
-OPAREN, CPAREN, COMMA, COLON, SEMI, EQ, OBRACE, CBRACE = map(Suppress, "(),:;={}")
-addexpr = Forward()
-mulexpr = Forward()
-cmpexpr = Forward()
-expr = Forward()
-smt = Forward()
-# term = (OPAREN + expr + CPAREN) | number | Group(ident).set_results_name("ident")
-term = number | ident
-compoundsmt = Group(OBRACE + ZeroOrMore(smt) + CBRACE).set_results_name("compoundsmt")
-compoundexpr = Group(OBRACE + ZeroOrMore(smt) + expr + CBRACE).set_results_name("compoundexpr")
-
-
-# mulexpr << (Group(term +    (Literal("*") | Literal("/") | Literal("%")) + expr).set_results_name("binexpr") | term)
-# addexpr << (Group(mulexpr + (Literal("+") | Literal("-")) + expr).set_results_name("binexpr") | mulexpr)
-# cmpexpr << (Group(addexpr + (Literal(">=") | Literal("<=") | Literal("==") | Literal(">") | Literal("<")) + expr).set_results_name("binexpr") | addexpr)
-mathexpr = infix_notation(term,
-    [
-        (oneOf("* /"), 2, opAssoc.LEFT, BinOp),
-        (oneOf("+ -"), 2, opAssoc.LEFT, BinOp),
-        (oneOf(">= <= == > <"), 2, opAssoc.LEFT, BinOp),
-    ]
-)
-
-funccall = Group(ident + OPAREN + ZeroOrMore(expr + COMMA) + Optional(expr) + CPAREN).set_results_name("funccall")
-
-eqfunc       =  Group(EQ + expr + SEMI).set_results_name("compoundexpr")
-compoundfunc =  compoundexpr | compoundsmt
-
-funcdef = Group(Suppress("fn") + ident + OPAREN + 
-          Group(Group(ZeroOrMore(ident + COLON + type_ + COMMA) + Optional(ident + COLON + type_)) + CPAREN +
-          Optional(Suppress("->") + type_)) + (compoundfunc | eqfunc | SEMI)).set_results_name("funcdef")
-
-expr << (funccall | mathexpr)
-
-smt << (expr + Suppress(";"))
-prog = ZeroOrMore(funcdef)
-
-def to_list(pr):
-    if isinstance(pr, ParseResults):
-        return [to_list(n) for n in pr]
-    else:
-        return pr
-
-def test(inp, out):
-    try:
-        res = prog.parseString(inp, parseAll=True)
-        res = to_list(res)
-    except ParseException as e:
-        res = str(e)
-
-    if res == out:
-        print("\x1b[92m✓\x1b[0m", inp, "=>", res)
-    else:
-        print("\x1b[91mx\x1b[0m", inp, "=>", res, "!=", out, "(expected)")
-
-
-def parse(text):
-    return prog.parse_string(text, parse_all=True)
+def regalloc_debuginfo(previous_frame):
+    (filename, line_number, function_name, lines, index) = inspect.getframeinfo(previous_frame)
+    self = previous_frame.f_locals.get("self")
+    dbginfo = function_name + ":" + str(line_number)
+    return dbginfo
 
 ARGS_REGS = ["%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9"]
 CALLER_SAVED_REGS = ["%rax", "%rcx", "%rdx", "%rsi", "%rdi", "%r8", "%r9"]
@@ -172,6 +52,18 @@ class LocalVar:
         self.name = name
         self.ty = ty
         self.loc = loc
+        
+class RegHint:
+    def __init__(self, wanted=None, unwanted=None):
+        if type(wanted) == str:
+            self.wanted = [wanted]
+        else:
+            self.wanted = [] if wanted is None else wanted
+            
+        if type(unwanted) == str:
+            self.unwanted = [unwanted]
+        else:
+            self.unwanted = [] if unwanted is None else unwanted
 
 class CG:
     def __init__(self):
@@ -183,27 +75,40 @@ class CG:
         self.locals = []
         self.O_CONSTANT_FOLDING = False
         
-    def regalloc(self, reg_wanted=None, dbginfo=None):
-        if reg_wanted != None:
-            if self.is_reg_used(reg_wanted):
-                print("Debug: request reg " + reg_wanted + ", but already used")
-                return self.regalloc(dbginfo=dbginfo)
+    def regalloc(self, reg_hint=None):
+        if reg_hint == None:
+            reg_hint = RegHint()
+        previous_frame = inspect.currentframe().f_back
+        dbginfo = regalloc_debuginfo(previous_frame)
+        if len(reg_hint.wanted) > 0:
+            for reg_wanted in reg_hint.wanted:
+                if not self.is_reg_used(reg_wanted):
+                    self.set_reg_used(reg_wanted, dbginfo)
+                    return reg_wanted
             
-            self.set_reg_used(reg_wanted, dbginfo)
-            return reg_wanted
-        
+            self.code.append("Request reg " + " or ".join(reg_hint.wanted) + ", but already used")
+            reg_hint.wanted = []
+
         for i, reg in enumerate(self.regs_used):
-            if not reg:
+            if not reg and not self.regs[i] in reg_hint.unwanted:
                 self.regs_used[i] = True
                 self.reg_allocator[self.regs[i]] = dbginfo
                 return self.regs[i]
-        print("Debug: request reg, all used")
+        self.code.append("Error assigning register, all were used")
         return None
+    
+    def code_append(self, ln):
+        previous_frame = inspect.currentframe().f_back
+        filename, line_number, function_name, lines, index = inspect.getframeinfo(previous_frame)
+        self = previous_frame.f_locals.get("self")
+        posinfo = function_name + ":" + str(line_number)
+        dbginfo = posinfo + " " * (18 - len(posinfo)) + str([reg + " " + str(self.reg_allocator[reg]) for i, reg in enumerate(self.regs) if self.regs_used[i]])
+        self.code.append(ln + (dbginfo,))
     
     def regfree(self, reg):
         previous_frame = inspect.currentframe().f_back
         filename, line_number, function_name, lines, index = inspect.getframeinfo(previous_frame)
-        print("Debug: freeing " + reg + " called from " + function_name + ":" + str(line_number))
+        self.code.append("Freeing " + reg + " called from " + function_name + ":" + str(line_number))
         idx = self.regs.index(reg)
         self.regs_used[idx] = False
         del self.reg_allocator[reg]
@@ -242,7 +147,7 @@ class CG:
         to_move = []
         to_free = [] # free these regs later
         for i, arg in enumerate(ast[1:]):
-            actual_reg, ty = self.expr(arg, reg_hint=arg_regs[i])
+            actual_reg, ty = self.expr(arg, reg_hint=RegHint(wanted=arg_regs[i]))
             # if they couldnæ then move them later
             if actual_reg != arg_regs[i]:
                 to_move.append((actual_reg, arg_regs[i]))
@@ -252,36 +157,36 @@ class CG:
         for reg in CALLER_SAVED_REGS:
             if self.is_reg_used(reg) and not reg in to_free:
                 saved_regs.append(reg)
-                self.code.append(("pushq", reg, LNO()))
+                self.append_code(("pushq", reg))
         
         # move args that weren't in the right regs            
         for from_, to in to_move:
-            self.code.append(("movq", from_, to, LNO()))
+            self.code_append(("movq", from_, to))
         
         # free args
         for reg in to_free:
             self.regfree(reg)
 
-        self.code.append(("call", funcname.val, LNO()))
+        self.code_append(("call", funcname.val))
 
         # figure out what register to return        
         if reg_hint != None and not self.is_reg_used(reg_hint):
             # use the hint
-            ret_reg = REGALLOC(reg_hint)
+            ret_reg = self.regalloc(RegHint(wanted=reg_hint))
         else:
             # try to just allocate rax because it's already in rax
-            ret_reg = REGALLOC("%rax")
+            ret_reg = self.regalloc(RegHint(wanted="%rax"))
             if ret_reg is None:
                 # this is a bit annoying, rax is already allocated
-                ret_reg = REGALLOC()
+                ret_reg = self.regalloc()
         
         # only move ret value if it's not rax
         if ret_reg != "%rax":
-            self.code.append(("movq", "%rax", ret_reg, LNO()))
+            self.code_append(("movq", "%rax", ret_reg))
         
         # restore saved regs
         for reg in saved_regs:
-            self.code.append(("popq", reg, LNO()))
+            self.code_append(("popq", reg))
             
         return (ret_reg, func_sig.ret_ty)
     
@@ -289,43 +194,41 @@ class CG:
         # TODO test this bit
         if rhs == "%rdx" or rhs == "%rax":
             # big problem, as rdx and rax are used for dividend
-            # first, force the result not to be in rax or rdx
-            to_free = []
-            if not self.is_reg_used("%rax"): to_free.append("%rax"); self.set_reg_used("%rax", None)
-            if not self.is_reg_used("%rdx"): to_free.append("%rdx"); self.set_reg_used("%rdx", None)
-            # second, allocate new register
+            # first, allocate new register
             old_rhs = rhs
-            rhs = REGALLOC()
-            # third, free old rhs
+            rhs = self.regalloc(RegHint(unwanted=["%rax", "%rdx"]))
+            # second, free old rhs
             self.regfree(old_rhs)
-            # fourth, free the previously allocated registers
-            for reg in to_free:
-                self.regfree(reg)
+            # third, move regs
+            self.code_append(("movq", old_rhs, rhs))
             
         # save regs that are used for dividend
         if self.is_reg_used("%rdx"):
-            self.code.append(("pushq", "%rdx", LNO()))
+            self.code_append(("pushq", "%rdx"))
         if self.is_reg_used("%rax"):
-            self.code.append(("pushq", "%rax", LNO()))
+            self.code_append(("pushq", "%rax"))
             
         # if it's not already, dividend goes in rax
-        if lhs != "%rax": self.code.append(("movq", lhs, "%rax", LNO()))
+        if lhs != "%rax": self.code_append(("movq", lhs, "%rax"))
         # sign extend rax to rdx
-        self.code.append(("cdq", LNO()))
-        self.code.append((("i" if signed else "") + "divq", rhs, LNO()))
+        self.code_append(("cdq",))
+        self.code_append((("i" if signed else "") + "divq", rhs))
         
         if op == "/":
             # quotient is in rax
-            self.code.append(("movq", "%rax", rhs, LNO()))
+            self.code_append(("movq", "%rax", rhs))
         else:
             # remainder is in rdx
-            self.code.append(("movq", "%rdx", rhs, LNO()))
+            self.code_append(("movq", "%rdx", rhs))
             
         # unsave regs again
         if self.is_reg_used("%rdx"):
-            self.code.append(("popq", "%rdx", LNO()))
+            self.code_append(("popq", "%rdx"))
         if self.is_reg_used("%rax"):
-            self.code.append(("popq", "%rax", LNO()))
+            self.code_append(("popq", "%rax"))
+        
+        # may have had to modify rhs
+        return rhs
 
     def binexpr(self, ast, reg_hint=None):
         
@@ -345,15 +248,19 @@ class CG:
         """
         # try and get dividend in rax, then less work later
         if op == "/":
-            lhs_reg = "%rax"
+            lhs_hint = RegHint(wanted="%rax")
         else:
-            lhs_reg = None
+            lhs_reg = RegHint()
         
-        lhs, lty = self.expr(ast.operands[0], lhs_reg)
-        for rhs_expr in ast.operands[1:]:
-            rhs, rty = self.expr(rhs_expr, reg_hint)
+        lhs, lty = self.expr(ast.operands[0], lhs_hint)
+        for i, rhs_expr in enumerate(ast.operands[1:]):
+            hint = None
+            if op == "/":
+                hint = RegHint(unwanted=["rax", "rdx"])
+            if i == len(ast.operands[1:]) - 1:
+                hint = reg_hint
+            rhs, rty = self.expr(rhs_expr, hint)
         
-            self.regfree(lhs)
             int_tys = ["u64", "u32", "u16", "u8", "i64", "i32", "i16", "i8"]
             if rty in ["f64", "f32"] or lty in ["f64", "f32"]:
                 raise SyntaxError("Floats not supported yet")
@@ -379,7 +286,7 @@ class CG:
                 raise SyntaxError(f"Incompatible types for operator '{op}': type '{lty}' and type '{rty}'")
         
             if op == "/" or op == "%":
-                self.int_div(lhs, rhs, signed, op)        
+                rhs = self.int_div(lhs, rhs, signed, op)        
             else:
                 if op == "+":
                     instr = "addq"
@@ -387,15 +294,17 @@ class CG:
                     instr = ("i" if signed else "") + "mulq"
                 elif op == "-":
                     instr = "subq"
-                self.code.append((instr, lhs, rhs, LNO()))
+                self.code_append((instr, lhs, rhs))
                 
-            lhs, lty = rhs, rty
+            self.regfree(lhs)
+            lhs = rhs
+            lty = rty
 
         return rhs, ty
         
     def int_literal(self, ast, reg_hint=None):
-        reg = REGALLOC(reg_hint)
-        self.code.append(("movq", "$" + str(ast.val), reg, LNO()))
+        reg = self.regalloc(reg_hint)
+        self.code_append(("movq", "$" + str(ast.val), reg))
         return reg, "i32" # TODO figure this out
 
     def ident(self, ast, reg_hint=None):
@@ -407,8 +316,8 @@ class CG:
         if reg_hint is not None:
             reg = reg_hint
         else:
-            reg = REGALLOC()
-        self.code.append(("movq", f"-{var.loc}(%rbp)", reg, LNO()))
+            reg = self.regalloc()
+        self.code_append(("movq", f"-{var.loc}(%rbp)", reg))
         return reg, var.ty
             
     def expr(self, ast, reg_hint=None):
@@ -450,11 +359,11 @@ class CG:
         self.locals.append([])
         
         # move locals to their variable positions
-        self.code.append((ast[0].val + ":", LNO()))
+        self.code_append((ast[0].val + ":",))
         if locsize > 0:
-            self.code.append(("pushq", "%rbp", LNO()))
-            self.code.append(("movq",  "%rsp",       "%rbp", LNO()))
-            self.code.append(("subq" , "$" + str(locsize), "%rsp", LNO()))
+            self.code_append(("pushq", "%rbp"))
+            self.code_append(("movq",  "%rsp",       "%rbp"))
+            self.code_append(("subq" , "$" + str(locsize), "%rsp"))
         
         arg_regs = ["%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9"]
         loc = 0
@@ -463,7 +372,7 @@ class CG:
         for name, ty in zip(ast[1][0][::2], ast[1][0][1::2]):
             check_valid_type(ty)
             self.locals[-1].append(LocalVar(name, ty, loc))
-            self.code.append(("movq", arg_regs[idx], f"-{loc}(%rbp)", LNO()))
+            self.code_append(("movq", arg_regs[idx], f"-{loc}(%rbp)"))
             loc += sizeof(ty)
             idx += 1
         
@@ -481,15 +390,15 @@ class CG:
             raise SyntaxError(f"Function '{str(ast[0])}' should return type '{ret_ty}', but last expression is of type '{actual_ret_ty}'")
         
         if ret_val is not None and ret_val != "%rax":
-            self.code.append(("movq", ret_val, "%rax", LNO()))
+            self.code_append(("movq", ret_val, "%rax"))
             self.regfree(ret_val)
         elif ret_val == "%rax":
             self.regfree(ret_val)
         
         if locsize > 0:
-            self.code.append(("addq", "$" + str(locsize), "%rsp", LNO()))
-            self.code.append(("popq", "%rbp", LNO()))
-        self.code.append(("ret", LNO()))
+            self.code_append(("addq", "$" + str(locsize), "%rsp"))
+            self.code_append(("popq", "%rbp"))
+        self.code_append(("ret",))
         
         self.locals.pop()
 
@@ -507,11 +416,36 @@ class CG:
     def format_code(self, debug=False):
         fmt_code = ".text\n" + "\n".join([".globl " + sig.name + "\n.type " + sig.name + ", @function" for sig in self.globals])
         fmt_code += "\n"
-        for line in self.code:
+        skip_next = False
+        for i, line in enumerate(self.code):
+            if type(line) == str and debug:
+                # debug statement in the code
+                fmt_code += "    # " + line + "\n"
+                continue
+            if skip_next:
+                skip_next = False
+                continue
+
             dbg = line[-1]
             instr = line[:-1]
             
-            ""# labels are unindented
+            # find next instruction (could be comments in the way)
+            offset = 1
+            ninstr = None
+            while offset + i < len(self.code) and type(self.code[i + offset]) == str:
+                offset += 1
+                
+            # check if mov is redundant (e.g. rax -> rcx then rcx -> rdx)
+            if ninstr is not None and \
+               instr[0][:3] == "mov" and \
+               ninstr[0][:3] == "mov" and \
+               instr[2] == ninstr[1]:
+                # redundant mov
+                skip_next = True
+                instr = list(instr)
+                instr[2] = ninstr[2]
+            
+            # labels are unindented
             if not (len(instr) == 1 and instr[0].endswith(":")):
                 curr_line = "    "
             else:

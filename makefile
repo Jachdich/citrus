@@ -1,17 +1,16 @@
+PYTHON = python3.9
+
 run: citrus
 	./citrus
 	
-compile.py.out: compile.py
-	gcc -w -x c -E compile.py -o compile.py.out
+build/citrus.s: compile.py citrus.lime
+	$(PYTHON) compile.py -o build/citrus.s -g citrus.lime
 
-citrus.s: compile.py citrus.lime
-	python3 compile.py -o citrus.s -g citrus.lime
-
-%.o: %.c
+build/%.o: build/%.s
 	gcc -c -o $@ $^
 
-%.o: %.s
-	gcc -c -o $@ $^
+liblemon/liblemon.a:
+	+make -C liblemon
 
-citrus: citrus.o io.o
-	gcc -o citrus $^
+citrus: build/citrus.o liblemon/liblemon.a
+	gcc -o citrus build/citrus.o -Lliblemon -llemon
