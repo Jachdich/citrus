@@ -25,6 +25,9 @@ class Ident:
         return f"Ident({self.val})"
     def __str__(self):
         return self.val
+    
+    def get_name(self):
+        return "ident"
 
 class BinOp:
     def __init__(self, tokens):
@@ -71,8 +74,18 @@ class FnDef:
 
 class VarAssign:
     def __init__(self, tokens):
-        print(tokens)
-        
+        self.lval = tokens[0].val
+        self.rval = tokens[1]
+    
+    def __str__(self):
+        return f"{self.lval} = {self.rval}"
+    
+    def __repr__(self):
+        return f"VarAssign({self.lval} = {self.rval})"
+    
+    def get_name(self):
+        return "varassign"
+
 class VarDef:
     def __init__(self, tokens):
         tokens = tokens[0]

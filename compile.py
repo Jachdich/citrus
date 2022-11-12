@@ -2,7 +2,7 @@ import os
 import math
 import inspect
 from pprint import pprint
-from parser import parse
+from parser import *
 
 def regalloc_debuginfo(previous_frame):
     (filename, line_number, function_name, lines, index) = inspect.getframeinfo(previous_frame)
@@ -307,18 +307,25 @@ class CG:
         return reg, "i32" # TODO figure this out
 
     def ident(self, ast, reg_hint=None):
-        name = ast[0]
-        var = self.get_local(name)
+        var = self.get_local(ast.val)
         if var is None:
-            raise SyntaxError("Undefined symbol '" + name + "'")
+            raise SyntaxError("Undefined symbol '" + ast.val + "'")
         
-        if reg_hint is not None:
-            reg = reg_hint
-        else:
-            reg = self.regalloc()
+        reg = self.regalloc(reg_hint)
         self.code_append(("movq", f"-{var.loc}(%rbp)", reg))
         return reg, var.ty
-            
+    
+    def var_assign(self, ast, reg_hint=None):
+        var = self.get_local(ast.lval)
+        if var is None:
+            raise SyntaxError(f"Undefined variable '{ast.lval}'")
+        rval, ret_ty = self.expr(ast.rval, reg_hint=reg_hint)
+        if not can_be_coerced(ret_ty, var.ty):
+            raise SyntaxError(f"Attempt to assign expression of type '{ret_ty}' to variable '{ast.lval}' (type '{var.ty}')")
+        
+        self.code_append(("movq", rval, f"-{var.loc}(%rbp)"))
+        return rval, var.ty
+    
     def expr(self, ast, reg_hint=None):
         if ast.get_name() == "binexpr":
             return self.binexpr(ast, reg_hint=reg_hint)
@@ -326,13 +333,23 @@ class CG:
             return self.int_literal(ast, reg_hint=reg_hint)
         elif ast.get_name() == "funccall":
             return self.funccall(ast, reg_hint=reg_hint)
-        elif ast.get_name() == "ident":
+        elif type(ast) == Ident:
             return self.ident(ast, reg_hint=reg_hint)
+        elif type(ast) == VarAssign:
+            return self.var_assign(ast, reg_hint=reg_hint)
         else:
             print("Not implemented: expression type " + ast.get_name())
             exit(1)
     
     def smt(self, ast):
+        if type(ast) == VarDef:
+            if ast.val != None:
+                # convert defs into assigns cos that's how we roll
+                ast = VarAssign([Ident(ast.name), ast.val])
+            else:
+                # nothing to assing; return
+                return
+        
         retval, rettype = self.expr(ast)
         self.regfree(retval)
     
@@ -357,19 +374,13 @@ class CG:
         if ret_ty is None:
             ret_ty = "void"
 
-        # size of locals (currently just args)
+        # size of locals (first calculate size of args)
         locsize = sum([sizeof(a[1]) for a in ast.args])
         
         self.locals.append([])
         
-        # move locals to their variable positions
-        self.code_append((ast.name + ":",))
-        if locsize > 0:
-            self.code_append(("pushq", "%rbp"))
-            self.code_append(("movq",  "%rsp",       "%rbp"))
-            self.code_append(("subq" , "$" + str(locsize), "%rsp"))
+        locdefs = filter(lambda n: type(n) == VarDef, ast.body)
         
-        arg_regs = ["%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9"]
         loc = 0
         idx = 0
         # add locals to symtable
@@ -379,6 +390,21 @@ class CG:
             self.code_append(("movq", arg_regs[idx], f"-{loc}(%rbp)"))
             loc += sizeof(ty)
             idx += 1
+
+        for d in locdefs:
+            check_valid_type(d.ty)
+            self.locals[-1].append(LocalVar(d.name, d.ty, loc))
+            locsize += sizeof(d.ty)
+            loc += sizeof(d.ty)
+        
+        # move locals to their variable positions
+        self.code_append((ast.name + ":",))
+        if locsize > 0:
+            self.code_append(("pushq", "%rbp"))
+            self.code_append(("movq",  "%rsp",       "%rbp"))
+            self.code_append(("subq" , "$" + str(locsize), "%rsp"))
+        
+        arg_regs = ["%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9"]
         
         for smt in ast.body[:-1]:
             self.smt(smt)
