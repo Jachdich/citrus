@@ -6,4 +6,7 @@ build
 test.c
 test.s
 test.o
+*/__pycache__
+__pycache__/*
 __pycache__
+*pycache*

@@ -13,9 +13,6 @@ class IntLit:
         return f"{self.val}IL"
     def __str__(self):
         return str(self.val)
-        
-    def get_name(self):
-        return "int_literal"
 
 class Ident:
     def __init__(self, tokens):
@@ -25,9 +22,6 @@ class Ident:
         return f"Ident({self.val})"
     def __str__(self):
         return self.val
-    
-    def get_name(self):
-        return "ident"
 
 class BinOp:
     def __init__(self, tokens):
@@ -38,10 +32,6 @@ class BinOp:
         return "BinOp(" + f" {self.op} ".join(map(repr, self.operands)) + ")"
     def __str__(self):
         return f" {self.op} ".join(map(str, self.operands))
-        
-    # TODO maybe bad
-    def get_name(self):
-        return "binexpr"
 
 class ImportSmt:
     def __init__(self, tokens):
@@ -51,9 +41,6 @@ class ImportSmt:
         return f"Import({self.fname})"
     def __str__(self):
         return f'import "{self.fname}"'
-
-    def get_name(self):
-        return "import"
 
 class FnDef:
     def __init__(self, tokens):
@@ -67,10 +54,7 @@ class FnDef:
             self.forward_decl = True
     
     def __repr__(self):
-        return f"FnDef({self.name}({', '.join([str(a) + ': ' + str(b) for a, b in self.args])}) {{{self.body}}})"
-    
-    def get_name(self):
-        return "funcdef"
+        return f"FnDef({self.name}({', '.join([str(a) + ': ' + str(b) for a, b in self.args])}) {self.body})"
 
 class VarAssign:
     def __init__(self, tokens):
@@ -82,9 +66,6 @@ class VarAssign:
     
     def __repr__(self):
         return f"VarAssign({self.lval} = {self.rval})"
-    
-    def get_name(self):
-        return "varassign"
 
 class VarDef:
     def __init__(self, tokens):
@@ -110,9 +91,50 @@ class VarDef:
         return f"VarDef({self.name}" + \
                (f": {self.ty}" if self.ty is not None else "") + \
                (f" = {repr(self.val)}" if self.val is not None else "") + ")"
+
+class IfSmt:
+    def __init__(self, tokens):
+        self.condition = tokens[0]
+        self.body = tokens[1]
+        if len(tokens) == 3:
+            self.else_body = tokens[2]
+        else:
+            self.else_body = None
+        
+    def __str__(self):
+        return f"if {self.condition} {self.body} else {self.else_body}"
     
-    def get_name(self):
-        return "vardef"
+    def __repr__(self):
+        return f"IfSmt({self.condition}, {self.body}" + (f", {self.else_body})" if self.else_body is not None else ")")
+
+class IfExpr(IfSmt):
+    def __init__(self, tokens):
+        super().__init__(tokens)
+
+class CompoundSmt:
+    def __init__(self, tokens):
+        self.smts = tokens
+    
+    def __repr__(self):
+        return f"CompoundSmt({{{self.smts}}})"
+
+class CompoundExpr:
+    def __init__(self, tokens):
+        self.smts = tokens
+    
+    def __repr__(self):
+        return f"CompoundExpr({{{self.smts}}})"
+
+class FuncCall:
+    def __init__(self, tokens):
+        self.name = tokens[0];
+        if len(tokens) > 1:
+            self.args = tokens[1:]
+        else:
+            self.args = []
+            
+    def __repr__(self):
+        return f"FuncCall({self.name}({self.args}))"
 
 ident = Word(alphas + "_", alphanums + "_").set_parse_action(Ident)
 type_ = ident
@@ -129,8 +151,8 @@ expr = Forward()
 smt = Forward()
 # term = (OPAREN + expr + CPAREN) | number | Group(ident).set_results_name("ident")
 term = number | ident
-compoundsmt = Group(OBRACE + ZeroOrMore(smt) + CBRACE).set_results_name("compoundsmt")
-compoundexpr = Group(OBRACE + ZeroOrMore(smt) + expr + CBRACE).set_results_name("compoundexpr")
+compoundsmt = (OBRACE + ZeroOrMore(smt) + CBRACE).set_parse_action(CompoundSmt)
+compoundexpr = (OBRACE + ZeroOrMore(smt) + expr + CBRACE).set_parse_action(CompoundExpr)
 
 importsmt = (Literal("import") + QuotedString(quoteChar='"')).set_parse_action(ImportSmt)
 
@@ -145,9 +167,9 @@ mathexpr = infix_notation(term,
     ]
 )
 
-funccall = Group(ident + OPAREN + ZeroOrMore(expr + COMMA) + Optional(expr) + CPAREN).set_results_name("funccall")
+funccall = (ident + OPAREN + ZeroOrMore(expr + COMMA) + Optional(expr) + CPAREN).set_parse_action(FuncCall)
 
-eqfunc       =  Group(EQ + expr + SEMI).set_results_name("compoundexpr")
+eqfunc       =  Group(EQ + expr + SEMI).set_parse_action(CompoundExpr)
 compoundfunc =  compoundexpr | compoundsmt
 
 funcdef = Group(Suppress("fn") + ident + OPAREN + 
@@ -157,9 +179,11 @@ funcdef = Group(Suppress("fn") + ident + OPAREN +
 vardef = Group(Suppress("let") + ident + Optional(COLON + ident) + Optional(EQ + expr) + SEMI).set_parse_action(VarDef)
 varassign = (ident + EQ + expr).set_parse_action(VarAssign)
 
-expr << (varassign | funccall | mathexpr)
+ifsmt  = (Suppress("if") + expr + compoundsmt + Optional(Suppress("else") + compoundsmt)).set_parse_action(IfSmt)
+ifexpr = (Suppress("if") + expr + compoundexpr + Suppress("else") + compoundexpr).set_parse_action(IfExpr) 
+expr << (ifexpr | varassign | funccall | mathexpr)
 
-smt << (vardef | (expr + Suppress(";")))
+smt << (vardef | ifsmt | (expr + Suppress(";")))
 prog = ZeroOrMore(importsmt | funcdef)
 
 def parse(text):

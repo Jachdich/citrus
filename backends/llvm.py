@@ -4,28 +4,6 @@ import inspect
 from pprint import pprint
 from parser import *
 
-def regalloc_debuginfo(previous_frame):
-    (filename, line_number, function_name, lines, index) = inspect.getframeinfo(previous_frame)
-    self = previous_frame.f_locals.get("self")
-    dbginfo = function_name + ":" + str(line_number)
-    return dbginfo
-
-ARGS_REGS = ["%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9"]
-CALLER_SAVED_REGS = ["%rax", "%rcx", "%rdx", "%rsi", "%rdi", "%r8", "%r9"]
-INT_TYPES = ["i32", "i64", "i16", "i8", "u64", "u32", "u16", "u8"]
-
-def sizeof(ty):
-    return {"i64": 8, "i32": 4, "i16": 2, "i8": 1,
-            "u64": 8, "u32": 4, "u16": 2, "u8": 1,
-            "f64": 8, "f32": 4, "char": 1}[ty]
-
-def is_valid_type(ty):
-    return ty in ["i32", "i64", "i16", "i8", "u64", "u32", "u16", "u8", "f64", "f32", "char", "void"]
-
-def check_valid_type(ty):
-    if not is_valid_type(ty):
-        raise SyntaxError(f"Unknown type '{ty}'")
-        
 def can_be_coerced(from_, to):
     # same type always able to convert
     if from_ == to: return True
@@ -52,83 +30,11 @@ class LocalVar:
         self.name = name
         self.ty = ty
         self.loc = loc
-        
-class RegHint:
-    def __init__(self, wanted=None, unwanted=None):
-        if type(wanted) == str:
-            self.wanted = [wanted]
-        else:
-            self.wanted = [] if wanted is None else wanted
-            
-        if type(unwanted) == str:
-            self.unwanted = [unwanted]
-        else:
-            self.unwanted = [] if unwanted is None else unwanted
 
 class CG:
     def __init__(self):
         self.code = []
-        self.regs = ["%rax", "%rcx", "%rdx", "%rsi", "%rdi", "%r8", "%r9", "%r10", "%r11", "%r12", "%r13", "%r14", "%r15"]
-        self.regs_used = [False] * len(self.regs)
-        self.reg_allocator = {}
-        self.globals = []
-        self.locals = []
-        self.O_CONSTANT_FOLDING = False
-        
-    def regalloc(self, reg_hint=None):
-        if reg_hint == None:
-            reg_hint = RegHint()
-        previous_frame = inspect.currentframe().f_back
-        dbginfo = regalloc_debuginfo(previous_frame)
-        if len(reg_hint.wanted) > 0:
-            for reg_wanted in reg_hint.wanted:
-                if not self.is_reg_used(reg_wanted):
-                    self.set_reg_used(reg_wanted, dbginfo)
-                    return reg_wanted
-            
-            self.code.append("Request reg " + " or ".join(reg_hint.wanted) + ", but already used")
-            reg_hint.wanted = []
 
-        for i, reg in enumerate(self.regs_used):
-            if not reg and not self.regs[i] in reg_hint.unwanted:
-                self.regs_used[i] = True
-                self.reg_allocator[self.regs[i]] = dbginfo
-                return self.regs[i]
-        self.code.append("Error assigning register, all were used")
-        return None
-    
-    def code_append(self, ln):
-        previous_frame = inspect.currentframe().f_back
-        filename, line_number, function_name, lines, index = inspect.getframeinfo(previous_frame)
-        self = previous_frame.f_locals.get("self")
-        posinfo = function_name + ":" + str(line_number)
-        dbginfo = posinfo + " " * (18 - len(posinfo)) + str([reg + " " + str(self.reg_allocator[reg]) for i, reg in enumerate(self.regs) if self.regs_used[i]])
-        self.code.append(ln + (dbginfo,))
-    
-    def regfree(self, reg):
-        previous_frame = inspect.currentframe().f_back
-        filename, line_number, function_name, lines, index = inspect.getframeinfo(previous_frame)
-        self.code.append("Freeing " + reg + " called from " + function_name + ":" + str(line_number))
-        idx = self.regs.index(reg)
-        self.regs_used[idx] = False
-        del self.reg_allocator[reg]
-        
-    def is_reg_used(self, reg):
-        return self.regs_used[self.regs.index(reg)]
-    
-    def set_reg_used(self, reg, dbg):
-        self.reg_allocator[reg] = dbg
-        self.regs_used[self.regs.index(reg)] = True
-        
-    def get_global(self, name):
-        for sig in self.globals:
-            if sig.name == name:
-                return sig
-    def get_local(self, name):
-        for var in self.locals[-1]:
-            if var.name == name:
-                return var
-    
     def funccall(self, ast, reg_hint=None):
         funcname = ast[0]
         func_sig = self.get_global(funcname.val)
@@ -157,7 +63,7 @@ class CG:
         for reg in CALLER_SAVED_REGS:
             if self.is_reg_used(reg) and not reg in to_free:
                 saved_regs.append(reg)
-                self.append_code(("pushq", reg))
+                self.code_append(("pushq", reg))
         
         # move args that weren't in the right regs            
         for from_, to in to_move:
@@ -190,75 +96,12 @@ class CG:
             
         return (ret_reg, func_sig.ret_ty)
     
-    def int_div(self, lhs, rhs, signed, op):
-        # TODO test this bit
-        if rhs == "%rdx" or rhs == "%rax":
-            # big problem, as rdx and rax are used for dividend
-            # first, allocate new register
-            old_rhs = rhs
-            rhs = self.regalloc(RegHint(unwanted=["%rax", "%rdx"]))
-            # second, free old rhs
-            self.regfree(old_rhs)
-            # third, move regs
-            self.code_append(("movq", old_rhs, rhs))
-            
-        # save regs that are used for dividend
-        if self.is_reg_used("%rdx"):
-            self.code_append(("pushq", "%rdx"))
-        if self.is_reg_used("%rax"):
-            self.code_append(("pushq", "%rax"))
-            
-        # if it's not already, dividend goes in rax
-        if lhs != "%rax": self.code_append(("movq", lhs, "%rax"))
-        # sign extend rax to rdx
-        self.code_append(("cdq",))
-        self.code_append((("i" if signed else "") + "divq", rhs))
-        
-        if op == "/":
-            # quotient is in rax
-            self.code_append(("movq", "%rax", rhs))
-        else:
-            # remainder is in rdx
-            self.code_append(("movq", "%rdx", rhs))
-            
-        # unsave regs again
-        if self.is_reg_used("%rdx"):
-            self.code_append(("popq", "%rdx"))
-        if self.is_reg_used("%rax"):
-            self.code_append(("popq", "%rax"))
-        
-        # may have had to modify rhs
-        return rhs
-
     def binexpr(self, ast, reg_hint=None):
         op = ast.op
         
-        """"
-        if rhs_expr.get_name() == "int_literal" and lhs_expr.get_name() == "int_literal" and self.O_CONSTANT_FOLDING:
-            # constexpr
-            if op == "+":
-                return self.int_literal(IntLit.from_val(ast.lhs + ast.rhs))
-            if op == "-":
-                return self.int_literal(IntLit.from_val(ast.lhs - ast.rhs))
-            if op == "*":
-                return self.int_literal(IntLit.from_val(ast.lhs * ast.rhs))
-            if op == "/":
-                return self.int_literal(IntLit.from_val(ast.lhs // ast.rhs))
-        """
-        # try and get dividend in rax, then less work later
-        if op == "/":
-            lhs_hint = RegHint(wanted="%rax")
-        else:
-            lhs_hint = RegHint()
-        
-        lhs, lty = self.expr(ast.operands[0], lhs_hint)
+        lhs = self.expr(ast.operands[0], lhs_hint)
         for i, rhs_expr in enumerate(ast.operands[1:]):
-            hint = None
-            if op == "/":
-                hint = RegHint(unwanted=["rax", "rdx"])
-            if i == len(ast.operands[1:]) - 1:
-                hint = reg_hint
-            rhs, rty = self.expr(rhs_expr, hint)
+            rhs = self.expr(rhs_expr, hint)
         
             int_tys = ["u64", "u32", "u16", "u8", "i64", "i32", "i16", "i8"]
             if rty in ["f64", "f32"] or lty in ["f64", "f32"]:
@@ -301,7 +144,7 @@ class CG:
 
         return rhs, ty
         
-    def int_literal(self, ast, reg_hint=None):
+    def int_literal(self, ast):
         reg = self.regalloc(reg_hint)
         self.code_append(("movq", "$" + str(ast.val), reg))
         return reg, "i32" # TODO figure this out
@@ -326,32 +169,57 @@ class CG:
         self.code_append(("movq", rval, f"-{var.loc}(%rbp)"))
         return rval, var.ty
     
-    def expr(self, ast, reg_hint=None):
-        if ast.get_name() == "binexpr":
-            return self.binexpr(ast, reg_hint=reg_hint)
-        elif ast.get_name() == "int_literal":
-            return self.int_literal(ast, reg_hint=reg_hint)
-        elif ast.get_name() == "funccall":
-            return self.funccall(ast, reg_hint=reg_hint)
-        elif type(ast) == Ident:
-            return self.ident(ast, reg_hint=reg_hint)
-        elif type(ast) == VarAssign:
-            return self.var_assign(ast, reg_hint=reg_hint)
+    def ifsmt(self, ast):
+        ret_reg, ret_ty = self.expr(ast.condition)
+        self.code_append(("test", ret_reg, ret_reg))
+        end_label   = self.gen_label()
+        if ast.else_body is not None:
+            false_label = self.gen_label()
+            self.code_append(("jne", false_label))
+        else:
+            self.code_append(("jne", end_label))
+        
+        for smt in ast.body:
+            self.smt(smt)
+            
+        if ast.else_body is not None:
+            self.code_append(("jp", end_label))
+            self.code_append((false_label + ":",))
+            for smt in ast.else_body:
+                self.smt(smt)
+        
+        self.code_append((end_label + ":",))
+    
+    def expr(self, ast):
+        if type(ast) == IntLit:
+            return self.int_literal(ast)
+        # elif type(ast) == BinOp:
+        #     return self.binexpr(ast, reg_hint=reg_hint)
+        # elif type(ast) == FuncCall:
+        #     return self.funccall(ast, reg_hint=reg_hint)
+        # elif type(ast) == Ident:
+        #     return self.ident(ast, reg_hint=reg_hint)
+        # elif type(ast) == VarAssign:
+        #     return self.var_assign(ast, reg_hint=reg_hint)
         else:
             print("Not implemented: expression type " + ast.get_name())
             exit(1)
-    
+
     def smt(self, ast):
         if type(ast) == VarDef:
             if ast.val != None:
                 # convert defs into assigns cos that's how we roll
                 ast = VarAssign([Ident(ast.name), ast.val])
+                retval, rettype = self.expr(ast)
+                self.regfree(retval)
             else:
                 # nothing to assing; return
                 return
-        
-        retval, rettype = self.expr(ast)
-        self.regfree(retval)
+        elif type(ast) == IfSmt:
+            self.ifsmt(ast)
+        else:
+            retval, rettype = self.expr(ast)
+            self.regfree(retval)
     
     def gen_fn_sig(self, ast):
         ret_ty = ast.ret_ty
@@ -512,40 +380,3 @@ class CG:
             fmt_code += curr_line + "\n"
         return fmt_code
 
-if __name__ == "__main__":
-    import argparse, sys, traceback
-    parser = argparse.ArgumentParser(
-                    prog="Citrus",
-                    description='Compile citrus code')
-    parser.add_argument("filename")
-    parser.add_argument("-o", "--output", help="Specify output file name. Default: <input filename>.s")
-    parser.add_argument("-g", "--debug", action="store_true", help="Enable debug comments in assembly")
-    args = parser.parse_args()
-    try:
-        with open(args.filename, "r") as f:
-            source = f.read()
-    except FileNotFoundError:
-        print(args.filename + ": No such file or directory")
-        exit(1)
-    
-    a = CG()
-    
-    def exception_hook(exctype, value, tb):
-        traceback_formated = traceback.format_exception(exctype, value, tb)
-        traceback_string = "".join(traceback_formated)
-        print(traceback_string, file=sys.stderr)
-        print(a.format_code(True))
-        
-        sys.exit(1)
-        
-    sys.excepthook = exception_hook
-
-    out = a.gen(parse(source), args.filename, args.debug)
-    print(out)
-    if args.output is None:
-        output_file = ".".join(input_file.split(".")[:-1]) + ".s"
-    else:
-        output_file = args.output
-    
-    with open(output_file, "w") as f:
-        f.write(out)

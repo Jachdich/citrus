@@ -6,7 +6,7 @@ run: citrus
 	./citrus
 	
 build/%.s: src/%.lime
-	$(PYTHON) compile.py -o $@ -g $^
+	$(PYTHON) main.py -o $@ -g $^
 
 build/%.o: build/%.s
 	gcc -c -o $@ $^
