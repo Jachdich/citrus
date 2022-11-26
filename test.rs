@@ -1,4 +1,3 @@
-import "liblemon/io.lime"
 
 fn test(a: i32) -> i32 {
     if a % 2 == 0 {
@@ -8,7 +7,6 @@ fn test(a: i32) -> i32 {
     }
 }
 
-fn main() -> i32 {
-    putd(test(34 + 35));
-    0
+fn main() {
+    println!("{}", test(34 + 35));
 }

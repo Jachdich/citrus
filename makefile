@@ -5,10 +5,16 @@ OBJECTS := $(patsubst src/%,build/%,$(SOURCES:.lime=.o))
 run: citrus
 	./citrus
 	
-build/%.s: src/%.lime
-	$(PYTHON) main.py -o $@ -g $^
+# build/%.s: src/%.lime
+#	$(PYTHON) main.py -b x86asm -o $@ -g $^
+
+build/%.c: src/%.lime
+	$(PYTHON) main.py -g -b c -o $@ $^
 
 build/%.o: build/%.s
+	gcc -c -o $@ $^
+
+Build/%.o: build/%.c
 	gcc -c -o $@ $^
 
 liblemon/liblemon.a:

@@ -44,17 +44,19 @@ class ImportSmt:
 
 class FnDef:
     def __init__(self, tokens):
-        self.name = tokens[0][0].val
-        self.args = zip(tokens[0][1][0][::2], tokens[0][1][0][1::2]) # (name, type) pairs
-        self.ret_ty = tokens[0][1][1].val if len(tokens[0][1]) > 1 else None
-        if len(tokens[0]) == 3:
+        self.name = tokens[0].val
+        # wtf is this
+        self.args = list(zip(map(lambda i: getattr(i, "val"), tokens[1][0][::2]), map(lambda i: getattr(i, "val"), tokens[1][0][1::2]))) # (name, type) pairs
+        self.ret_ty = tokens[1][1].val if len(tokens[1]) > 1 else None
+        if len(tokens) == 3:
             self.forward_decl = False
-            self.body = tokens[0][2]
+            self.body = tokens[2]
         else:
             self.forward_decl = True
     
     def __repr__(self):
         return f"FnDef({self.name}({', '.join([str(a) + ': ' + str(b) for a, b in self.args])}) {self.body})"
+
 
 class VarAssign:
     def __init__(self, tokens):
@@ -127,7 +129,7 @@ class CompoundExpr:
 
 class FuncCall:
     def __init__(self, tokens):
-        self.name = tokens[0];
+        self.name = tokens[0].val
         if len(tokens) > 1:
             self.args = tokens[1:]
         else:
@@ -161,7 +163,7 @@ importsmt = (Literal("import") + QuotedString(quoteChar='"')).set_parse_action(I
 # cmpexpr << (Group(addexpr + (Literal(">=") | Literal("<=") | Literal("==") | Literal(">") | Literal("<")) + expr).set_results_name("binexpr") | addexpr)
 mathexpr = infix_notation(term,
     [
-        (oneOf("* /"), 2, opAssoc.LEFT, BinOp),
+        (oneOf("* / %"), 2, opAssoc.LEFT, BinOp),
         (oneOf("+ -"), 2, opAssoc.LEFT, BinOp),
         (oneOf(">= <= == > <"), 2, opAssoc.LEFT, BinOp),
     ]
@@ -172,7 +174,7 @@ funccall = (ident + OPAREN + ZeroOrMore(expr + COMMA) + Optional(expr) + CPAREN)
 eqfunc       =  Group(EQ + expr + SEMI).set_parse_action(CompoundExpr)
 compoundfunc =  compoundexpr | compoundsmt
 
-funcdef = Group(Suppress("fn") + ident + OPAREN + 
+funcdef = (Suppress("fn") + ident + OPAREN + 
           Group(Group(ZeroOrMore(ident + COLON + type_ + COMMA) + Optional(ident + COLON + type_)) + CPAREN +
           Optional(Suppress("->") + type_)) + (compoundfunc | eqfunc | SEMI)).set_parse_action(FnDef)
 

@@ -411,6 +411,7 @@ class CG:
         
         locdefs = filter(lambda n: type(n) == VarDef, ast.body.smts)
         
+        arg_regs = ["%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9"]
         loc = 0
         idx = 0
         # add locals to symtable
@@ -434,7 +435,6 @@ class CG:
             self.code_append(("movq",  "%rsp",       "%rbp"))
             self.code_append(("subq" , "$" + str(locsize), "%rsp"))
         
-        arg_regs = ["%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9"]
         
         for smt in ast.body.smts[:-1]:
             self.smt(smt)
@@ -472,9 +472,9 @@ class CG:
         
         ast = parse(source)
         for smt in ast:
-            if smt.get_name() == "funcdef":
+            if type(smt) == FnDef:
                 self.globals.append(self.gen_fn_sig(smt))
-            elif smt.get_name() == "import" and smt.fname not in already_imported:
+            elif type(smt) == ImportSmt and smt.fname not in already_imported:
                 # recursively import anything we haven't already
                 self.importsmt(smt, already_imported)
         
