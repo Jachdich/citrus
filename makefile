@@ -15,7 +15,7 @@ build/%.o: build/%.s
 	gcc -c -o $@ $^
 
 Build/%.o: build/%.c
-	gcc -c -o $@ $^
+	gcc -c -Wall -o $@ $^
 
 liblemon/liblemon.a:
 	+make -C liblemon

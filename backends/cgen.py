@@ -89,7 +89,9 @@ class CG:
                 lty = combine_types(lty, rty)
             return lty
         elif type(ast) == CompoundExpr:
-            return self.figure_out_type(ast.smts[-1])
+            return self.figure_out_type(ast.expr)
+        elif type(ast) == CompoundSmt:
+            return "void"
         elif type(ast) == Ident:
             return self.get_local(ast.val).ty
         else:
@@ -97,7 +99,7 @@ class CG:
     
     def gen_var_name(self):
         self.var += 1
-        return "var" + str(self.var)
+        return "__var" + str(self.var)
         
     def get_global(self, name):
         for sig in self.globals:
@@ -162,15 +164,15 @@ class CG:
         var = self.get_local(ast.lval)
         if var is None:
             raise SyntaxError(f"Undefined variable '{ast.lval}'")
-        rval, ret_ty = self.expr(ast.rval, reg_hint=reg_hint)
+        expr_res = self.expr(ast.rval)
         if not can_be_coerced(ret_ty, var.ty):
             raise SyntaxError(f"Attempt to assign expression of type '{ret_ty}' to variable '{ast.lval}' (type '{var.ty}')")
         
-        self.code_append(("movq", rval, f"-{var.loc}(%rbp)"))
-        return rval, var.ty
+        self.code += var + " = " + expr_res + ";\n"
+        return var
     
     def ifsmt(self, ast):
-        ret_reg, ret_ty = self.expr(ast.condition)
+        ret_reg = self.expr(ast.condition)
         self.code_append(("test", ret_reg, ret_reg))
         end_label   = self.gen_label()
         if ast.else_body is not None:
@@ -214,6 +216,23 @@ class CG:
         
         return tmp_name
     
+    def vardef(self, ast: VarDef):
+        if ast.ty is None:
+            if ast.val is None:
+                raise SyntaxError("Black magic fuckery is not supported yet")
+            ast.ty = self.figure_out_type(ast.val)
+        
+        if ast.val is not None:
+            expr_res = self.expr(ast.val)
+        
+        # TODO this generates bad code (too many var defs)
+        self.code += ast.ty + " " + ast.name
+        if ast.val is not None:
+            self.code += " = " + expr_res
+        self.code += ";\n"
+        
+        self.locals[-1].append(LocalVar(ast.name, ast.ty))
+    
     def expr(self, ast):
         if type(ast) == BinOp:
             return self.binexpr(ast)
@@ -233,14 +252,7 @@ class CG:
     
     def smt(self, ast):
         if type(ast) == VarDef:
-            if ast.val != None:
-                # convert defs into assigns cos that's how we roll
-                ast = VarAssign([Ident(ast.name), ast.val])
-                self.expr(ast)
-                self.code += ";\n"
-            else:
-                # nothing to assign; return
-                return
+            self.vardef(ast)
         elif type(ast) == IfSmt:
             self.ifsmt(ast)
         else:
@@ -265,10 +277,6 @@ class CG:
             self.code += f"{sig.ret_ty} {sig.name}({', '.join([str(ty) for ty in sig.args])});\n"
             return
         
-        ret_ty = ast.ret_ty
-        if ret_ty is None:
-            ret_ty = "void"
-
         self.locals.append([])
         
         locdefs = filter(lambda n: type(n) == VarDef, ast.body.smts)
@@ -278,21 +286,24 @@ class CG:
             check_valid_type(ty)
             self.locals[-1].append(LocalVar(name, ty))
 
+        ret_ty = ast.ret_ty
+        if ret_ty is None:
+            ret_ty = self.figure_out_type(ast.body)
+        else:
+            actual_ret_ty = self.figure_out_type(ast.body)
+            if not can_be_coerced(actual_ret_ty, ret_ty):
+                raise SyntaxError(f"Function '{str(ast[0])}' should return type '{ret_ty}', but last expression is of type '{actual_ret_ty}'")
+        sig.ret_ty = ret_ty
+
         self.code += f"{sig.ret_ty} {sig.name}({', '.join([str(ty) + ' ' + str(name) for name, ty in ast.args])}) {{\n"
         
-        for smt in ast.body.smts[:-1]:
+        for smt in ast.body.smts:
             self.smt(smt)
         
         if type(ast.body) == CompoundExpr:
-            ret_val = self.expr(ast.body.smts[-1])
+            ret_val = self.expr(ast.body.expr)
             self.code += "return " + ret_val + ";\n"
-        else:
-            self.smt(ast.body.smts[-1])
-            actual_ret_ty = "void"
             
-        # if not can_be_coerced(actual_ret_ty, ret_ty):
-        #     raise SyntaxError(f"Function '{str(ast[0])}' should return type '{ret_ty}', but last expression is of type '{actual_ret_ty}'")
-        
         self.locals.pop()
         self.code += "}\n"
         
