@@ -10,3 +10,5 @@ test.o
 __pycache__/*
 __pycache__
 *pycache*
+*.o
+*.a
