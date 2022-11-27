@@ -122,10 +122,11 @@ class CompoundSmt:
 
 class CompoundExpr:
     def __init__(self, tokens):
-        self.smts = tokens
+        self.smts = tokens[:-1]
+        self.expr = tokens[-1]
     
     def __repr__(self):
-        return f"CompoundExpr({{{self.smts}}})"
+        return f"CompoundExpr({{{self.smts + [self.expr,]}}})"
 
 class FuncCall:
     def __init__(self, tokens):
@@ -138,19 +139,25 @@ class FuncCall:
     def __repr__(self):
         return f"FuncCall({self.name}({self.args}))"
 
+comment = Literal("//") + restOfLine
+
+OPAREN, CPAREN, COMMA, COLON, SEMI, EQ, OBRACE, CBRACE = map(Suppress, "(),:;={}")
 ident = Word(alphas + "_", alphanums + "_").set_parse_action(Ident)
-type_ = ident
 integer = Combine(Optional("-") + Word("0123456789"))
 decimal = Combine(Optional("-") + Word("0123456789") + Literal(".") + Word("0123456789"))
 
 number = decimal | integer.set_parse_action(IntLit)
 
-OPAREN, CPAREN, COMMA, COLON, SEMI, EQ, OBRACE, CBRACE = map(Suppress, "(),:;={}")
 addexpr = Forward()
 mulexpr = Forward()
 cmpexpr = Forward()
 expr = Forward()
 smt = Forward()
+type_ = Forward()
+
+arg_list = Group(ZeroOrMore(ident + COLON + type_ + COMMA) + Optional(ident + COLON + type_))
+type_ << (ident | (Literal("fn") + OPAREN + arg_list + CPAREN))
+
 # term = (OPAREN + expr + CPAREN) | number | Group(ident).set_results_name("ident")
 term = number | ident
 compoundsmt = (OBRACE + ZeroOrMore(smt) + CBRACE).set_parse_action(CompoundSmt)
@@ -171,14 +178,15 @@ mathexpr = infix_notation(term,
 
 funccall = (ident + OPAREN + ZeroOrMore(expr + COMMA) + Optional(expr) + CPAREN).set_parse_action(FuncCall)
 
-eqfunc       =  Group(EQ + expr + SEMI).set_parse_action(CompoundExpr)
+eqfunc       =  (EQ + expr + SEMI).set_parse_action(CompoundExpr)
 compoundfunc =  compoundexpr | compoundsmt
 
 funcdef = (Suppress("fn") + ident + OPAREN + 
-          Group(Group(ZeroOrMore(ident + COLON + type_ + COMMA) + Optional(ident + COLON + type_)) + CPAREN +
-          Optional(Suppress("->") + type_)) + (compoundfunc | eqfunc | SEMI)).set_parse_action(FnDef)
+          Group(arg_list + CPAREN + Optional(Suppress("->") + type_)) +
+          (compoundfunc | eqfunc | SEMI)).set_parse_action(FnDef)
 
-vardef = Group(Suppress("let") + ident + Optional(COLON + ident) + Optional(EQ + expr) + SEMI).set_parse_action(VarDef)
+
+vardef = Group(Suppress("let") + ident + Optional(COLON + type_) + Optional(EQ + expr) + SEMI).set_parse_action(VarDef)
 varassign = (ident + EQ + expr).set_parse_action(VarAssign)
 
 ifsmt  = (Suppress("if") + expr + compoundsmt + Optional(Suppress("else") + compoundsmt)).set_parse_action(IfSmt)
@@ -187,6 +195,7 @@ expr << (ifexpr | varassign | funccall | mathexpr)
 
 smt << (vardef | ifsmt | (expr + Suppress(";")))
 prog = ZeroOrMore(importsmt | funcdef)
+prog.ignore(comment)
 
 def parse(text):
     return prog.parse_string(text, parse_all=True)

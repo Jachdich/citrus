@@ -1,14 +1,10 @@
 import "liblemon/io.lime"
 
-fn test(a: i32) -> i32 {
-    if a % 2 == 0 {
-        a / 2
-    } else {
-        a * 3 + 1
-    }
-}
+// fn b(num: i32) = num + 1;
 
-fn main() -> i32 {
-    putd(test(34 + 35));
-    0
+fn main() {
+	let a: i32 = 16;
+	let b: fn(num: i32) = num + 1;
+	putd(b(a));
+	0
 }
