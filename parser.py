@@ -191,10 +191,10 @@ importsmt = (Literal("import") + QuotedString(quoteChar='"')).set_parse_action(I
 # cmpexpr << (Group(addexpr + (Literal(">=") | Literal("<=") | Literal("==") | Literal(">") | Literal("<")) + expr).set_results_name("binexpr") | addexpr)
 mathexpr = infix_notation(term,
     [
-        (oneOf("= += -= *= /="), 2, opAssoc.LEFT, BinOp),
         (oneOf("* / %"), 2, opAssoc.LEFT, BinOp),
         (oneOf("+ -"), 2, opAssoc.LEFT, BinOp),
         (oneOf(">= <= == > < !="), 2, opAssoc.LEFT, BinOp),
+        (oneOf("= += -= *= /="), 2, opAssoc.LEFT, BinOp),
     ]
 )
 
@@ -221,5 +221,9 @@ prog = ZeroOrMore(importsmt | funcdef)
 prog.ignore(comment)
 
 def parse(text):
-    return prog.parse_string(text, parse_all=True)
+    try:
+        return prog.parse_string(text, parse_all=True)
+    except ParseException as err:
+        print(err.explain())
+        exit(1)
 

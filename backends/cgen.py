@@ -79,7 +79,10 @@ class CG:
         self.globals = []
         self.locals = []
         self.var = 0
-    
+        self.indent = 0
+        
+    def get_indent(self):
+        return " " * (self.indent * 4)
     
     def figure_out_type(self, ast, locals=None):
         if locals == None:
@@ -139,31 +142,42 @@ class CG:
             args.append(self.expr(a))
                     
         if func_sig.ret_ty != "void":
-            var_name = self.gen_var_name()
-            self.code += func_sig.ret_ty + " " + var_name + " = " + funcname + "(" + ", ".join(args) + ");\n"
-            return var_name
+            # var_name = self.gen_var_name()
+            # self.code += func_sig.ret_ty + " " + var_name + " = " + funcname + "(" + ", ".join(args) + ");\n"
+            # return var_name
+            return funcname + "(" + ", ".join(args) + ")"
         else:
-            self.code += funcname + "(" + ", ".join(args) + ");\n"
+            self.code += self.get_indent() + funcname + "(" + ", ".join(args) + ");\n"
         
     def binexpr(self, ast):
         op = ast.op
         tmp_code = ""
+        
+        # for the sake of simplicity here, I'm going to assume that operators =, +=, -=. /= and *= are only 2 (so a += b += c isn't valid)
+        # I should probably implement that in the parser at some point, either that or make it valid here
+        if op in ["=", "-=", "+=", "/=", "*="]:
+            rval = self.expr(ast.operands[1])
+            self.code += self.get_indent() + ast.operands[0].val + " " + op + " " + rval + ";\n"
+            return ast.operands[0].val
+
         for i, expr in enumerate(ast.operands):
             resval = self.expr(expr)
             tmp_code += resval
             if i < len(ast.operands) - 1:
                 tmp_code += op
                 
-        ty = self.figure_out_type(ast)
-        var_name = self.gen_var_name()
-        self.code += ty + " " + var_name + " = " + tmp_code + ";\n"
-        return var_name
+        # ty = self.figure_out_type(ast)
+        # var_name = self.gen_var_name()
+        # self.code += ty + " " + var_name + " = " + tmp_code + ";\n"
+        # return var_name
+        return tmp_code
 
     def int_literal(self, ast):
         ty = "i32" # TODO figure this out
-        tmp = self.gen_var_name()
-        self.code += ty + " " + tmp + " = " + str(ast) + ";\n"
-        return tmp
+        # tmp = self.gen_var_name()
+        # self.code += ty + " " + tmp + " = " + str(ast) + ";\n"
+        # return tmp
+        return str(ast)
 
     def ident(self, ast):
         var = self.get_local(ast.val)
@@ -179,33 +193,39 @@ class CG:
         if not can_be_coerced(ret_ty, var.ty):
             raise SyntaxError(f"Attempt to assign expression of type '{ret_ty}' to variable '{ast.lval}' (type '{var.ty}')")
         
-        self.code += var.name + " = " + expr_res + ";\n"
+        self.code += self.get_indent() + var.name + " = " + expr_res + ";\n"
         return var
     
     def ifsmt(self, ast):
         cond = self.expr(ast.condition)
-        self.code += f"if ({cond}) {{\n"
+        self.code += f"{self.get_indent()}if ({cond}) {{\n"
+        self.indent += 1
         for smt in ast.body.smts:
             self.smt(smt)
-        self.code += "}"
+        self.indent -= 1
+        self.code += self.get_indent() + "}"
         if ast.else_body is not None:
-            self.code += " else {"
+            self.indent += 1
+            self.code += " else {\n"
             for smt in ast.else_body.smts:
                 self.smt(smt)
-            self.code += "}"
+            self.indent -= 1
+            self.code += self.get_indent() + "}"
         
         self.code += "\n"
         
     def whilesmt(self, ast):
         cond = self.expr(ast.condition)
-        self.code += f"while ({cond}) {{\n"
+        self.code += f"{self.get_indent()}while ({cond}) {{\n"
+        self.indent += 1
         for smt in ast.body.smts:
             self.smt(smt)
             
         # update condition
-        cond2 = self.expr(ast.condition)
-        self.code += cond + " = " + cond2 + ";\n"
-        self.code += "}\n"
+        # cond2 = self.expr(ast.condition)
+        # self.code += cond + " = " + cond2 + ";\n"
+        self.indent -= 1
+        self.code += self.get_indent() + "}\n"
                
     def ifexpr(self, ast: IfExpr):
         ifbtype = self.figure_out_type(ast.body)
@@ -216,18 +236,21 @@ class CG:
         ret_ty = combine_types(ifbtype, elsebtype)
         tmp_name = self.gen_var_name()
         cond_res = self.expr(ast.condition)
-        self.code += ret_ty + " " + tmp_name + ";\n"
-        self.code += "if (" + cond_res + ") {\n"
+        self.code += self.get_indent() + ret_ty + " " + tmp_name + ";\n"
+        self.code += self.get_indent() + "if (" + cond_res + ") {\n"
+        self.indent += 1
         for smt in ast.body.smts[:-1]:
             self.smt(smt)
         if_res = self.expr(ast.body.smts[-1])
-        self.code += tmp_name + " = " + if_res + ";\n} else {\n"
-        
+        self.indent -= 1
+        self.code += tmp_name + " = " + if_res + ";\n" + self.get_indent() + "} else {\n"
+        self.indent += 1
         for smt in ast.else_body.smts[:-1]:
             self.smt(smt)
         
         else_res = self.expr(ast.else_body.smts[-1])
-        self.code += tmp_name + " = " + else_res + ";\n}\n"
+        self.code += self.get_indent() + tmp_name + " = " + else_res + ";\n}\n"
+        self.indent -= 1
         
         return tmp_name
     
@@ -245,7 +268,7 @@ class CG:
                 expr_res = self.expr(ast.val)
         
             # TODO this generates bad code (too many var defs)
-            self.code += ast.ty + " " + ast.name
+            self.code += self.get_indent() + ast.ty + " " + ast.name
             if ast.val is not None:
                 self.code += " = " + expr_res
             self.code += ";\n"
@@ -278,7 +301,6 @@ class CG:
             self.whilesmt(ast)
         else:
             self.expr(ast)
-            self.code += ";\n"
     
     def gen_fn_sig(self, ast):
         ret_ty = ast.ret_ty
@@ -291,6 +313,7 @@ class CG:
         return sig
    
     def funcdef(self, ast):
+        self.indent += 1
         sig = self.gen_fn_sig(ast)
         self.globals.append(sig)
         
@@ -323,10 +346,11 @@ class CG:
         
         if type(ast.body) == CompoundExpr:
             ret_val = self.expr(ast.body.expr)
-            self.code += "return " + ret_val + ";\n"
+            self.code += self.get_indent() + "return " + ret_val + ";\n"
             
         self.locals.pop()
         self.code += "}\n"
+        self.indent -= 1
         
     def importsmt(self, smt, already_imported):
         if not os.path.isfile(smt.fname):

@@ -12,4 +12,6 @@ __pycache__
 *pycache*
 *.o
 *.a
+liblemon/*.o
+liblemon/*.a
 citrus
