@@ -1,1 +1,1 @@
-fn putd(a: i64);
+putd: fn(a: i64);

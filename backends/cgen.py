@@ -4,6 +4,8 @@ import inspect
 from pprint import pprint
 from parser import *
 
+INT_TYPES = ["i8", "i16", "i32", "i64", "u8", "u16", "u32", "u64"]
+
 def is_valid_type(ty):
     return ty in ["i32", "i64", "i16", "i8", "u64", "u32", "u16", "u8", "f64", "f32", "char", "void"]
 
@@ -27,9 +29,8 @@ def can_be_coerced(from_, to):
     return False
 
 def combine_types(lty, rty):
-    int_tys = ["i8", "i16", "i32", "i64", "u8", "u16", "u32", "u64"]
-    num_tys = int_tys + ["f32", "f64"]
-    if rty in int_tys and lty in int_tys:
+    num_tys = INT_TYPES + ["f32", "f64"]
+    if rty in INT_TYPES and lty in INT_TYPES:
         # both ints, biggest wins
         lsigned = lty[0] == "i"
         rsigned = rty[0] == "i"
@@ -80,7 +81,9 @@ class CG:
         self.var = 0
     
     
-    def figure_out_type(self, ast):
+    def figure_out_type(self, ast, locals=None):
+        if locals == None:
+            locals = []
         if type(ast) == IntLit:
             return "i32"
         elif type(ast) == BinOp:
@@ -89,10 +92,17 @@ class CG:
                 lty = combine_types(lty, rty)
             return lty
         elif type(ast) == CompoundExpr:
-            return self.figure_out_type(ast.expr)
+            for smt in ast.smts:
+                if type(smt) == VarDef:
+                    if smt.ty is None:
+                        smt.ty = self.figure_out_type(smt.val, locals=locals)
+                    locals.append(LocalVar(smt.name, smt.ty))
+            return self.figure_out_type(ast.expr, locals=locals)
         elif type(ast) == CompoundSmt:
             return "void"
         elif type(ast) == Ident:
+            if ast.val in [l.name for l in locals]:
+                return next(filter(lambda l: l.name == ast.val, locals)).ty
             return self.get_local(ast.val).ty
         else:
             raise NotImplementedError(f"Not implemented figuring out type of ast {repr(ast)}")
@@ -110,6 +120,8 @@ class CG:
         for var in self.locals[-1]:
             if var.name == name:
                 return var
+        
+        raise SyntaxError(f"Undefined variable '{name}'")
     
     def funccall(self, ast):
         funcname = ast.name
@@ -162,36 +174,39 @@ class CG:
     
     def var_assign(self, ast):
         var = self.get_local(ast.lval)
-        if var is None:
-            raise SyntaxError(f"Undefined variable '{ast.lval}'")
         expr_res = self.expr(ast.rval)
+        ret_ty = self.figure_out_type(ast.rval)
         if not can_be_coerced(ret_ty, var.ty):
             raise SyntaxError(f"Attempt to assign expression of type '{ret_ty}' to variable '{ast.lval}' (type '{var.ty}')")
         
-        self.code += var + " = " + expr_res + ";\n"
+        self.code += var.name + " = " + expr_res + ";\n"
         return var
     
     def ifsmt(self, ast):
-        ret_reg = self.expr(ast.condition)
-        self.code_append(("test", ret_reg, ret_reg))
-        end_label   = self.gen_label()
+        cond = self.expr(ast.condition)
+        self.code += f"if ({cond}) {{\n"
+        for smt in ast.body.smts:
+            self.smt(smt)
+        self.code += "}"
         if ast.else_body is not None:
-            false_label = self.gen_label()
-            self.code_append(("jne", false_label))
-        else:
-            self.code_append(("jne", end_label))
+            self.code += " else {"
+            for smt in ast.else_body.smts:
+                self.smt(smt)
+            self.code += "}"
         
-        for smt in ast.body:
+        self.code += "\n"
+        
+    def whilesmt(self, ast):
+        cond = self.expr(ast.condition)
+        self.code += f"while ({cond}) {{\n"
+        for smt in ast.body.smts:
             self.smt(smt)
             
-        if ast.else_body is not None:
-            self.code_append(("jp", end_label))
-            self.code_append((false_label + ":",))
-            for smt in ast.else_body:
-                self.smt(smt)
-        
-        self.code_append((end_label + ":",))
-        
+        # update condition
+        cond2 = self.expr(ast.condition)
+        self.code += cond + " = " + cond2 + ";\n"
+        self.code += "}\n"
+               
     def ifexpr(self, ast: IfExpr):
         ifbtype = self.figure_out_type(ast.body)
         elsebtype = self.figure_out_type(ast.else_body)
@@ -220,16 +235,20 @@ class CG:
         if ast.ty is None:
             if ast.val is None:
                 raise SyntaxError("Black magic fuckery is not supported yet")
+            
             ast.ty = self.figure_out_type(ast.val)
         
-        if ast.val is not None:
-            expr_res = self.expr(ast.val)
+        if type(ast.ty) == FnType:
+            raise SyntaxError("Lambdas are not supported yet")
+        else:
+            if ast.val is not None:
+                expr_res = self.expr(ast.val)
         
-        # TODO this generates bad code (too many var defs)
-        self.code += ast.ty + " " + ast.name
-        if ast.val is not None:
-            self.code += " = " + expr_res
-        self.code += ";\n"
+            # TODO this generates bad code (too many var defs)
+            self.code += ast.ty + " " + ast.name
+            if ast.val is not None:
+                self.code += " = " + expr_res
+            self.code += ";\n"
         
         self.locals[-1].append(LocalVar(ast.name, ast.ty))
     
@@ -247,7 +266,7 @@ class CG:
         elif type(ast) == IfExpr:
             return self.ifexpr(ast)
         else:
-            print("Not implemented: expression type " + ast.get_name())
+            print("Not implemented: expression type " + str(type(ast)))
             exit(1)
     
     def smt(self, ast):
@@ -255,6 +274,8 @@ class CG:
             self.vardef(ast)
         elif type(ast) == IfSmt:
             self.ifsmt(ast)
+        elif type(ast) == WhileSmt:
+            self.whilesmt(ast)
         else:
             self.expr(ast)
             self.code += ";\n"
@@ -292,7 +313,7 @@ class CG:
         else:
             actual_ret_ty = self.figure_out_type(ast.body)
             if not can_be_coerced(actual_ret_ty, ret_ty):
-                raise SyntaxError(f"Function '{str(ast[0])}' should return type '{ret_ty}', but last expression is of type '{actual_ret_ty}'")
+                raise SyntaxError(f"Function '{str(ast)}' should return type '{ret_ty}', but last expression is of type '{actual_ret_ty}'")
         sig.ret_ty = ret_ty
 
         self.code += f"{sig.ret_ty} {sig.name}({', '.join([str(ty) + ' ' + str(name) for name, ty in ast.args])}) {{\n"

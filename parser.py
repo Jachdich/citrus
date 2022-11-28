@@ -81,6 +81,8 @@ class VarDef:
         while len(tokens) > 0:
             if type(tokens[0]) == Ident:
                 self.ty = tokens[0].val
+            elif type(tokens[0]) == FnType:
+                self.ty = tokens[0]
             else:
                 self.val = tokens[0]
                 
@@ -108,6 +110,14 @@ class IfSmt:
     
     def __repr__(self):
         return f"IfSmt({self.condition}, {self.body}" + (f", {self.else_body})" if self.else_body is not None else ")")
+
+class WhileSmt:
+    def __init__(self, tokens):
+        self.condition = tokens[0]
+        self.body = tokens[1]
+    
+    def __repr__(self):
+        return f"WhileSmt({self.condition} {self.body})"
 
 class IfExpr(IfSmt):
     def __init__(self, tokens):
@@ -139,6 +149,17 @@ class FuncCall:
     def __repr__(self):
         return f"FuncCall({self.name}({self.args}))"
 
+class FnType:
+    def __init__(self, tokens):
+        self.args = list(zip(map(lambda i: getattr(i, "val"), tokens[0][::2]), map(lambda i: getattr(i, "val"), tokens[0][1::2]))) # (name, type) pairs
+        if len(tokens) > 1:
+            self.ty = tokens[1]
+        else:
+            self.ty = None
+            
+    def __repr__(self):
+        return f"fn({', '.join([n + ': ' + t for n, t in self.args])})" + (("-> " + self.ty.val) if self.ty is not None else "")
+
 comment = Literal("//") + restOfLine
 
 OPAREN, CPAREN, COMMA, COLON, SEMI, EQ, OBRACE, CBRACE = map(Suppress, "(),:;={}")
@@ -156,7 +177,7 @@ smt = Forward()
 type_ = Forward()
 
 arg_list = Group(ZeroOrMore(ident + COLON + type_ + COMMA) + Optional(ident + COLON + type_))
-type_ << (ident | (Literal("fn") + OPAREN + arg_list + CPAREN))
+type_ << ((Suppress("fn") + OPAREN + arg_list + CPAREN + Optional(Suppress("->") + type_)).set_parse_action(FnType) | ident)
 
 # term = (OPAREN + expr + CPAREN) | number | Group(ident).set_results_name("ident")
 term = number | ident
@@ -170,9 +191,10 @@ importsmt = (Literal("import") + QuotedString(quoteChar='"')).set_parse_action(I
 # cmpexpr << (Group(addexpr + (Literal(">=") | Literal("<=") | Literal("==") | Literal(">") | Literal("<")) + expr).set_results_name("binexpr") | addexpr)
 mathexpr = infix_notation(term,
     [
+        (oneOf("= += -= *= /="), 2, opAssoc.LEFT, BinOp),
         (oneOf("* / %"), 2, opAssoc.LEFT, BinOp),
         (oneOf("+ -"), 2, opAssoc.LEFT, BinOp),
-        (oneOf(">= <= == > <"), 2, opAssoc.LEFT, BinOp),
+        (oneOf(">= <= == > < !="), 2, opAssoc.LEFT, BinOp),
     ]
 )
 
@@ -181,19 +203,20 @@ funccall = (ident + OPAREN + ZeroOrMore(expr + COMMA) + Optional(expr) + CPAREN)
 eqfunc       =  (EQ + expr + SEMI).set_parse_action(CompoundExpr)
 compoundfunc =  compoundexpr | compoundsmt
 
-funcdef = (Suppress("fn") + ident + OPAREN + 
+funcdef = (ident + Suppress(":") + Suppress("fn") + OPAREN + 
           Group(arg_list + CPAREN + Optional(Suppress("->") + type_)) +
           (compoundfunc | eqfunc | SEMI)).set_parse_action(FnDef)
 
 
 vardef = Group(Suppress("let") + ident + Optional(COLON + type_) + Optional(EQ + expr) + SEMI).set_parse_action(VarDef)
-varassign = (ident + EQ + expr).set_parse_action(VarAssign)
+
+whilesmt = (Suppress("while") + expr + compoundsmt).set_parse_action(WhileSmt)
 
 ifsmt  = (Suppress("if") + expr + compoundsmt + Optional(Suppress("else") + compoundsmt)).set_parse_action(IfSmt)
-ifexpr = (Suppress("if") + expr + compoundexpr + Suppress("else") + compoundexpr).set_parse_action(IfExpr) 
-expr << (ifexpr | varassign | funccall | mathexpr)
+ifexpr = (Suppress("if") + expr + compoundexpr + Suppress("else") + compoundexpr).set_parse_action(IfExpr)
+expr << (ifexpr | funccall | mathexpr)
 
-smt << (vardef | ifsmt | (expr + Suppress(";")))
+smt << (whilesmt | vardef | ifsmt | (expr + Suppress(";")))
 prog = ZeroOrMore(importsmt | funcdef)
 prog.ignore(comment)
 

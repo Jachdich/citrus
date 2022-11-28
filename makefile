@@ -14,7 +14,7 @@ build/%.c: src/%.lime
 build/%.o: build/%.s
 	gcc -c -o $@ $^
 
-Build/%.o: build/%.c
+build/%.o: build/%.c
 	gcc -c -Wall -o $@ $^
 
 liblemon/liblemon.a:
