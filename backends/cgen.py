@@ -81,8 +81,8 @@ class CG:
         self.var = 0
         self.indent = 0
         
-    def get_indent(self):
-        return " " * (self.indent * 4)
+    def get_indent(self, offset=0):
+        return " " * ((self.indent + offset) * 4)
     
     def figure_out_type(self, ast, locals=None):
         if locals == None:
@@ -241,15 +241,13 @@ class CG:
         self.indent += 1
         for smt in ast.body.smts[:-1]:
             self.smt(smt)
-        if_res = self.expr(ast.body.smts[-1])
-        self.indent -= 1
-        self.code += tmp_name + " = " + if_res + ";\n" + self.get_indent() + "} else {\n"
-        self.indent += 1
+        if_res = self.expr(ast.body.expr)
+        self.code += self.get_indent() + tmp_name + " = " + if_res + ";\n" + self.get_indent(-1) + "} else {\n"
         for smt in ast.else_body.smts[:-1]:
             self.smt(smt)
         
-        else_res = self.expr(ast.else_body.smts[-1])
-        self.code += self.get_indent() + tmp_name + " = " + else_res + ";\n}\n"
+        else_res = self.expr(ast.else_body.expr)
+        self.code += self.get_indent() + tmp_name + " = " + else_res + ";\n" + self.get_indent(-1) + "}\n"
         self.indent -= 1
         
         return tmp_name
@@ -313,7 +311,6 @@ class CG:
         return sig
    
     def funcdef(self, ast):
-        self.indent += 1
         sig = self.gen_fn_sig(ast)
         self.globals.append(sig)
         
@@ -341,6 +338,7 @@ class CG:
 
         self.code += f"{sig.ret_ty} {sig.name}({', '.join([str(ty) + ' ' + str(name) for name, ty in ast.args])}) {{\n"
         
+        self.indent += 1
         for smt in ast.body.smts:
             self.smt(smt)
         
@@ -351,6 +349,12 @@ class CG:
         self.locals.pop()
         self.code += "}\n"
         self.indent -= 1
+        
+    def structdef(self, smt):
+        self.code += "typedef struct " + smt.name + " {\n"
+        for name, ty in smt.members:
+            self.code += "    " + ty + " " + name + ";\n"
+        self.code += "};\n"
         
     def importsmt(self, smt, already_imported):
         if not os.path.isfile(smt.fname):
@@ -374,6 +378,8 @@ class CG:
         for smt in ast:
             if type(smt) == FnDef:
                 self.funcdef(smt)
+            elif type(smt) == StructDef:
+                self.structdef(smt)
             elif type(smt) == ImportSmt:
                 self.importsmt(smt, [fname])
             else:

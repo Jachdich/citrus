@@ -1,20 +1,10 @@
 import "liblemon/io.lime"
 
-test: fn(a: i32) -> i32 {
-    let steps = 0;
-    while a > 1 {
-        a = if a % 2 == 0 { a / 2 }
-            else { a * 3 + 1 };
-        steps += 1;
-    }
-    steps
+SomeStruct: struct {
+    a: i32;
+    b: u16;
 }
 
 main: fn() -> i32 {
-    let a = 1;
-    while a <= 10 {
-        putd(test(a));
-        a += 1;
-    }
     0
 }

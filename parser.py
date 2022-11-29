@@ -160,6 +160,14 @@ class FnType:
     def __repr__(self):
         return f"fn({', '.join([n + ': ' + t for n, t in self.args])})" + (("-> " + self.ty.val) if self.ty is not None else "")
 
+class StructDef:
+    def __init__(self, tokens):
+        self.name = tokens[0].val
+        self.members = list(zip([n.val for n in tokens[1:][::2]], [n.val for n in tokens[1:][1::2]]))
+    
+    def __repr__(self):
+        return f"Struct({self.name} {{{', '.join([n + ': ' + t for n, t in self.members])}}})"
+
 comment = Literal("//") + restOfLine
 
 OPAREN, CPAREN, COMMA, COLON, SEMI, EQ, OBRACE, CBRACE = map(Suppress, "(),:;={}")
@@ -189,7 +197,11 @@ importsmt = (Literal("import") + QuotedString(quoteChar='"')).set_parse_action(I
 # mulexpr << (Group(term +    (Literal("*") | Literal("/") | Literal("%")) + expr).set_results_name("binexpr") | term)
 # addexpr << (Group(mulexpr + (Literal("+") | Literal("-")) + expr).set_results_name("binexpr") | mulexpr)
 # cmpexpr << (Group(addexpr + (Literal(">=") | Literal("<=") | Literal("==") | Literal(">") | Literal("<")) + expr).set_results_name("binexpr") | addexpr)
-mathexpr = infix_notation(term,
+
+funccall = (ident + OPAREN + ZeroOrMore(expr + COMMA) + Optional(expr) + CPAREN).set_parse_action(FuncCall)
+ifexpr = (Suppress("if") + expr + compoundexpr + Suppress("else") + compoundexpr).set_parse_action(IfExpr)
+nonmathexpr = (ifexpr | funccall | term | ident)
+mathexpr = infix_notation(nonmathexpr,
     [
         (oneOf("* / %"), 2, opAssoc.LEFT, BinOp),
         (oneOf("+ -"), 2, opAssoc.LEFT, BinOp),
@@ -198,8 +210,6 @@ mathexpr = infix_notation(term,
     ]
 )
 
-funccall = (ident + OPAREN + ZeroOrMore(expr + COMMA) + Optional(expr) + CPAREN).set_parse_action(FuncCall)
-
 eqfunc       =  (EQ + expr + SEMI).set_parse_action(CompoundExpr)
 compoundfunc =  compoundexpr | compoundsmt
 
@@ -207,17 +217,18 @@ funcdef = (ident + Suppress(":") + Suppress("fn") + OPAREN +
           Group(arg_list + CPAREN + Optional(Suppress("->") + type_)) +
           (compoundfunc | eqfunc | SEMI)).set_parse_action(FnDef)
 
+structdef = (ident + Suppress(":") + Suppress("struct") + OBRACE +
+            ZeroOrMore(ident + Suppress(":") + type_ + SEMI) + CBRACE).set_parse_action(StructDef)
 
 vardef = Group(Suppress("let") + ident + Optional(COLON + type_) + Optional(EQ + expr) + SEMI).set_parse_action(VarDef)
 
 whilesmt = (Suppress("while") + expr + compoundsmt).set_parse_action(WhileSmt)
 
 ifsmt  = (Suppress("if") + expr + compoundsmt + Optional(Suppress("else") + compoundsmt)).set_parse_action(IfSmt)
-ifexpr = (Suppress("if") + expr + compoundexpr + Suppress("else") + compoundexpr).set_parse_action(IfExpr)
-expr << (ifexpr | funccall | mathexpr)
+expr << (mathexpr | nonmathexpr)
 
 smt << (whilesmt | vardef | ifsmt | (expr + Suppress(";")))
-prog = ZeroOrMore(importsmt | funcdef)
+prog = ZeroOrMore(importsmt | funcdef | structdef)
 prog.ignore(comment)
 
 def parse(text):
