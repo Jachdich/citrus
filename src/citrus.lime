@@ -1,8 +1,11 @@
 import "liblemon/io.lime"
 
-SomeStruct: struct {
-    a: i32;
-    b: u16;
+Token: struct {
+    type: u32;
+    text: String;
+    indent: u32;
+    line: u32;
+    col: u32;
 }
 
 main: fn() -> i32 {

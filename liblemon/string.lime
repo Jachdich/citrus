@@ -1,0 +1,10 @@
+import "liblemon/mem.lime"
+
+strlen: fn(data: char*) -> u64;
+
+String: struct {
+	length: u32;
+	data: char*;
+}
+
+String_new: fn(data: char*) = String { length: strlen(data), data: data };

@@ -45,17 +45,17 @@ class ImportSmt:
 class FnDef:
     def __init__(self, tokens):
         self.name = tokens[0].val
-        # wtf is this
-        self.args = list(zip(map(lambda i: getattr(i, "val"), tokens[1][0][::2]), map(lambda i: getattr(i, "val"), tokens[1][0][1::2]))) # (name, type) pairs
-        self.ret_ty = tokens[1][1].val if len(tokens[1]) > 1 else None
+        self.args = list(zip(tokens[1][0][::2], tokens[1][0][1::2])) # (name, type) pairs
+        self.ret_ty = tokens[1][1] if len(tokens[1]) > 1 else None
         if len(tokens) == 3:
             self.forward_decl = False
             self.body = tokens[2]
         else:
             self.forward_decl = True
+            self.body = None
     
     def __repr__(self):
-        return f"FnDef({self.name}({', '.join([str(a) + ': ' + str(b) for a, b in self.args])}) {self.body})"
+        return f"FnDef({self.name}({', '.join([str(a) + ': ' + str(b) for a, b in self.args])}) = {self.body})"
 
 
 class VarAssign:
@@ -149,21 +149,34 @@ class FuncCall:
     def __repr__(self):
         return f"FuncCall({self.name}({self.args}))"
 
-class FnType:
+class Type:
     def __init__(self, tokens):
-        self.args = list(zip(map(lambda i: getattr(i, "val"), tokens[0][::2]), map(lambda i: getattr(i, "val"), tokens[0][1::2]))) # (name, type) pairs
-        if len(tokens) > 1:
-            self.ty = tokens[1]
+        if tokens[0] == "fn":
+            self.fn_ptr = True
+            self.args = list(zip(tokens[1][::2], tokens[1][1::2])) # (name, type) pairs
+            if len(tokens) > 2:
+                self.ty = tokens[2]
+            else:
+                self.ty = None
+                
         else:
-            self.ty = None
-            
+            self.fn_ptr = False
+            self.name = tokens[0].val
+            if len(tokens) > 1:
+                self.num_ptr = len(tokens[1:])
+            else:
+                self.num_ptr = 0
+
     def __repr__(self):
-        return f"fn({', '.join([n + ': ' + t for n, t in self.args])})" + (("-> " + self.ty.val) if self.ty is not None else "")
+        if self.fn_ptr:
+            return f"fn({', '.join([n + ': ' + t for n, t in self.args])})" + (("-> " + self.ty.val) if self.ty is not None else "")
+        else:
+            return "Type(" + self.name + "*" * self.num_ptr + ")"
 
 class StructDef:
     def __init__(self, tokens):
         self.name = tokens[0].val
-        self.members = list(zip([n.val for n in tokens[1:][::2]], [n.val for n in tokens[1:][1::2]]))
+        self.members = list(zip(tokens[1:][::2], tokens[1:][1::2]))
     
     def __repr__(self):
         return f"Struct({self.name} {{{', '.join([n + ': ' + t for n, t in self.members])}}})"
@@ -185,7 +198,7 @@ smt = Forward()
 type_ = Forward()
 
 arg_list = Group(ZeroOrMore(ident + COLON + type_ + COMMA) + Optional(ident + COLON + type_))
-type_ << ((Suppress("fn") + OPAREN + arg_list + CPAREN + Optional(Suppress("->") + type_)).set_parse_action(FnType) | ident)
+type_ << ((Literal("fn") + OPAREN + arg_list + CPAREN + Optional(Suppress("->") + type_)) | (ident + ZeroOrMore("*")) | Literal("*")).set_parse_action(Type)
 
 # term = (OPAREN + expr + CPAREN) | number | Group(ident).set_results_name("ident")
 term = number | ident

@@ -1,0 +1,15 @@
+import "liblemon/mem.lime"
+
+struct Vec<T> {
+	len: u64;
+	capacity: u64;
+	data: T*;
+}
+
+Vec<T>::new: fn() = Vec<T> { len: 0, capacity: 1, data: malloc(1 * sizeof(T)) };
+Vec<T>::push: fn(self: Vec<T>*, elem: T) = {
+	if self.len >= self.capacity {
+		self.data = realloc(self.data, (self.capacity *= 2) * sizeof(T));
+	}
+	self.data[self.len += 1] = elem;
+}

@@ -1,0 +1,3 @@
+malloc: fn(sz: u64) -> *;
+memcpy: proc(a: *, b: *, len: u64) -> *;
+

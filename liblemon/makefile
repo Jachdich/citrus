@@ -1,4 +1,5 @@
-OBJECTS := io.o
+OBJECTS := io.o string.o
+PYTHON = python3.9
 
 liblemon.a: $(OBJECTS)
 	ar -rc $@ $^
@@ -10,3 +11,6 @@ liblemon.a: $(OBJECTS)
 %.o: %.s
 	gcc -c -o $@ $^
 
+%.c: %.lime
+	$(PYTHON) ../main.py -g -b c -o $@ $^
+	
