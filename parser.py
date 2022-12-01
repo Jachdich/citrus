@@ -45,7 +45,7 @@ class ImportSmt:
 class FnDef:
     def __init__(self, tokens):
         self.name = tokens[0].val
-        self.args = list(zip(tokens[1][0][::2], tokens[1][0][1::2])) # (name, type) pairs
+        self.args = list(zip([n.val for n in tokens[1][0][::2]], tokens[1][0][1::2])) # (name, type) pairs
         self.ret_ty = tokens[1][1] if len(tokens[1]) > 1 else None
         if len(tokens) == 3:
             self.forward_decl = False
@@ -151,9 +151,10 @@ class FuncCall:
 
 class Type:
     def __init__(self, tokens):
+        print(tokens)
         if tokens[0] == "fn":
             self.fn_ptr = True
-            self.args = list(zip(tokens[1][::2], tokens[1][1::2])) # (name, type) pairs
+            self.args = list(zip([n.val for n in tokens[1][::2]], tokens[1][1::2])) # (name, type) pairs
             if len(tokens) > 2:
                 self.ty = tokens[2]
             else:
@@ -161,26 +162,37 @@ class Type:
                 
         else:
             self.fn_ptr = False
-            self.name = tokens[0].val
-            if len(tokens) > 1:
-                self.num_ptr = len(tokens[1:])
+            if type(tokens[0]) == str:
+                self.name = "void"
+                self.num_ptr = len(tokens)
             else:
-                self.num_ptr = 0
+                self.name = tokens[0].val
+                if len(tokens) > 1:
+                    self.num_ptr = len(tokens[1:])
+                else:
+                    self.num_ptr = 0
 
     def __repr__(self):
         if self.fn_ptr:
-            return f"fn({', '.join([n + ': ' + t for n, t in self.args])})" + (("-> " + self.ty.val) if self.ty is not None else "")
+            return f"fn({', '.join([n + ': ' + repr(t) for n, t in self.args])})" + (("-> " + self.ty.val) if self.ty is not None else "")
         else:
             return "Type(" + self.name + "*" * self.num_ptr + ")"
 
 class StructDef:
     def __init__(self, tokens):
         self.name = tokens[0].val
-        self.members = list(zip(tokens[1:][::2], tokens[1:][1::2]))
+        self.members = list(zip([n.val for n in tokens[1:][::2]], tokens[1:][1::2]))
     
     def __repr__(self):
-        return f"Struct({self.name} {{{', '.join([n + ': ' + t for n, t in self.members])}}})"
+        return f"Struct({self.name} {{{', '.join([n + ': ' + repr(t) for n, t in self.members])}}})"
 
+class StructInit:
+    def __init__(self, tokens):
+        self.struct_name = tokens[0]
+        self.init_args = list(zip([n.val for n in tokens[1:][::2]], tokens[1:][1::2]))
+
+    def __repr__(self):
+        return f"StructInit({self.struct_name} {{{', '.join([n + ': ' + repr(t) for n, t in self.init_args])}}})"
 comment = Literal("//") + restOfLine
 
 OPAREN, CPAREN, COMMA, COLON, SEMI, EQ, OBRACE, CBRACE = map(Suppress, "(),:;={}")
@@ -211,9 +223,11 @@ importsmt = (Literal("import") + QuotedString(quoteChar='"')).set_parse_action(I
 # addexpr << (Group(mulexpr + (Literal("+") | Literal("-")) + expr).set_results_name("binexpr") | mulexpr)
 # cmpexpr << (Group(addexpr + (Literal(">=") | Literal("<=") | Literal("==") | Literal(">") | Literal("<")) + expr).set_results_name("binexpr") | addexpr)
 
+structinit = (ident + OBRACE + delimitedList(ident + Suppress(":") + expr, ",") + CBRACE).set_parse_action(StructInit)
+
 funccall = (ident + OPAREN + ZeroOrMore(expr + COMMA) + Optional(expr) + CPAREN).set_parse_action(FuncCall)
 ifexpr = (Suppress("if") + expr + compoundexpr + Suppress("else") + compoundexpr).set_parse_action(IfExpr)
-nonmathexpr = (ifexpr | funccall | term | ident)
+nonmathexpr = (ifexpr | funccall | structinit | term | ident)
 mathexpr = infix_notation(nonmathexpr,
     [
         (oneOf("* / %"), 2, opAssoc.LEFT, BinOp),
@@ -226,7 +240,7 @@ mathexpr = infix_notation(nonmathexpr,
 eqfunc       =  (EQ + expr + SEMI).set_parse_action(CompoundExpr)
 compoundfunc =  compoundexpr | compoundsmt
 
-funcdef = (ident + Suppress(":") + Suppress("fn") + OPAREN + 
+funcdef = (ident + Suppress(":") + (Suppress("fn") | Suppress("proc")) + OPAREN + 
           Group(arg_list + CPAREN + Optional(Suppress("->") + type_)) +
           (compoundfunc | eqfunc | SEMI)).set_parse_action(FnDef)
 

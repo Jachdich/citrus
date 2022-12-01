@@ -7,7 +7,7 @@ from parser import *
 INT_TYPES = ["i8", "i16", "i32", "i64", "u8", "u16", "u32", "u64"]
 
 def is_valid_type(ty):
-    return ty in ["i32", "i64", "i16", "i8", "u64", "u32", "u16", "u8", "f64", "f32", "char", "void"]
+    return ty.name in ["i32", "i64", "i16", "i8", "u64", "u32", "u16", "u8", "f64", "f32", "char", "void"]
 
 def check_valid_type(ty):
     if not is_valid_type(ty):
@@ -17,11 +17,11 @@ def can_be_coerced(from_, to):
     # same type always able to convert
     if from_ == to: return True
     
-    if from_ in INT_TYPES and to in INT_TYPES:
-        if from_[0] != to[0]:
+    if from_.name in INT_TYPES and to.name in INT_TYPES:
+        if from_.name[0] != to.name[0]:
             return False # can't coerce signed to unsigned or vice versa
-        fbits = int(from_[1:])
-        tbits = int(to[1:])
+        fbits = int(from_.name[1:])
+        tbits = int(to.name[1:])
         # can coerce if dest bits >= source bits
         return tbits >= fbits
     
@@ -29,6 +29,8 @@ def can_be_coerced(from_, to):
     return False
 
 def combine_types(lty, rty):
+    if lty.num_ptr != 0 or rty.num_ptr != 0:
+        raise SyntaxError("Pointer arith isn't supported yet")
     num_tys = INT_TYPES + ["f32", "f64"]
     if rty in INT_TYPES and lty in INT_TYPES:
         # both ints, biggest wins
@@ -84,11 +86,11 @@ class CG:
     def get_indent(self, offset=0):
         return " " * ((self.indent + offset) * 4)
     
-    def figure_out_type(self, ast, locals=None):
+    def figure_out_type(self, ast, locals=None) -> Type:
         if locals == None:
             locals = []
         if type(ast) == IntLit:
-            return "i32"
+            return Type([Ident(["i32"])])
         elif type(ast) == BinOp:
             lty = self.figure_out_type(ast.operands[0])
             for rty in map(self.figure_out_type, ast.operands[1:]):
@@ -102,13 +104,16 @@ class CG:
                     locals.append(LocalVar(smt.name, smt.ty))
             return self.figure_out_type(ast.expr, locals=locals)
         elif type(ast) == CompoundSmt:
-            return "void"
+            return Type([Ident(["void"])])
         elif type(ast) == Ident:
             if ast.val in [l.name for l in locals]:
                 return next(filter(lambda l: l.name == ast.val, locals)).ty
             return self.get_local(ast.val).ty
         else:
             raise NotImplementedError(f"Not implemented figuring out type of ast {repr(ast)}")
+    
+    def get_type(self, ty):
+        return ty.name + "*" * ty.num_ptr
     
     def gen_var_name(self):
         self.var += 1
@@ -141,7 +146,7 @@ class CG:
         for a in ast.args:
             args.append(self.expr(a))
                     
-        if func_sig.ret_ty != "void":
+        if func_sig.ret_ty.name != "void":
             # var_name = self.gen_var_name()
             # self.code += func_sig.ret_ty + " " + var_name + " = " + funcname + "(" + ", ".join(args) + ");\n"
             # return var_name
@@ -236,7 +241,7 @@ class CG:
         ret_ty = combine_types(ifbtype, elsebtype)
         tmp_name = self.gen_var_name()
         cond_res = self.expr(ast.condition)
-        self.code += self.get_indent() + ret_ty + " " + tmp_name + ";\n"
+        self.code += self.get_indent() + self.get_type(ret_ty) + " " + tmp_name + ";\n"
         self.code += self.get_indent() + "if (" + cond_res + ") {\n"
         self.indent += 1
         for smt in ast.body.smts[:-1]:
@@ -259,14 +264,13 @@ class CG:
             
             ast.ty = self.figure_out_type(ast.val)
         
-        if type(ast.ty) == FnType:
+        if ast.ty.fn_ptr:
             raise SyntaxError("Lambdas are not supported yet")
         else:
             if ast.val is not None:
                 expr_res = self.expr(ast.val)
         
-            # TODO this generates bad code (too many var defs)
-            self.code += self.get_indent() + ast.ty + " " + ast.name
+            self.code += self.get_indent() + self.get_type(ast.ty) + " " + ast.name
             if ast.val is not None:
                 self.code += " = " + expr_res
             self.code += ";\n"
@@ -303,7 +307,7 @@ class CG:
     def gen_fn_sig(self, ast):
         ret_ty = ast.ret_ty
         if ret_ty is None:
-            ret_ty = "void"
+            ret_ty = Type([Ident(["void"])])
         
         check_valid_type(ret_ty)
         args = [a[1] for a in ast.args] # just types
@@ -315,7 +319,7 @@ class CG:
         self.globals.append(sig)
         
         if ast.forward_decl:
-            self.code += f"{sig.ret_ty} {sig.name}({', '.join([str(ty) for ty in sig.args])});\n"
+            self.code += f"{self.get_type(sig.ret_ty)} {sig.name}({', '.join([str(ty) for ty in sig.args])});\n"
             return
         
         self.locals.append([])
@@ -353,7 +357,7 @@ class CG:
     def structdef(self, smt):
         self.code += "typedef struct " + smt.name + " {\n"
         for name, ty in smt.members:
-            self.code += "    " + ty + " " + name + ";\n"
+            self.code += "    " + self.get_type(ty) + " " + name + ";\n"
         self.code += "};\n"
         
     def importsmt(self, smt, already_imported):

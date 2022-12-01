@@ -1,4 +1,5 @@
 import "liblemon/io.lime"
+import "liblemon/string.lime"
 
 Token: struct {
     type: u32;
