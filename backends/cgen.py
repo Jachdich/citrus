@@ -109,6 +109,8 @@ class CG:
             if ast.val in [l.name for l in locals]:
                 return next(filter(lambda l: l.name == ast.val, locals)).ty
             return self.get_local(ast.val).ty
+        elif type(ast) == StructInit:
+            return self.get_global(ast.struct_name)
         else:
             raise NotImplementedError(f"Not implemented figuring out type of ast {repr(ast)}")
     
@@ -123,6 +125,7 @@ class CG:
         for sig in self.globals:
             if sig.name == name:
                 return sig
+        raise SyntaxError(f"Undefined global '{name}'")
 
     def get_local(self, name):
         for var in self.locals[-1]:
@@ -316,6 +319,9 @@ class CG:
    
     def funcdef(self, ast):
         sig = self.gen_fn_sig(ast)
+        for g in self.globals:
+            if type(g) == FuncSig and g.name == sig.name:
+                raise SyntaxError(f"Redefinition of function '{sig.name}'")
         self.globals.append(sig)
         
         if ast.forward_decl:
