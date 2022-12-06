@@ -44,6 +44,7 @@ class ImportSmt:
 
 class FnDef:
     def __init__(self, tokens):
+        print(tokens)
         self.name = tokens[0].val
         self.args = list(zip([n.val for n in tokens[1][0][::2]], tokens[1][0][1::2])) # (name, type) pairs
         self.ret_ty = tokens[1][1] if len(tokens[1]) > 1 else None
@@ -151,7 +152,6 @@ class FuncCall:
 
 class Type:
     def __init__(self, tokens):
-        print(tokens)
         if tokens[0] == "fn":
             self.fn_ptr = True
             self.args = list(zip([n.val for n in tokens[1][::2]], tokens[1][1::2])) # (name, type) pairs
@@ -240,9 +240,10 @@ mathexpr = infix_notation(nonmathexpr,
 eqfunc       =  (EQ + expr + SEMI).set_parse_action(CompoundExpr)
 compoundfunc =  compoundexpr | compoundsmt
 
-funcdef = (ident + Suppress(":") + (Suppress("fn") | Suppress("proc")) + OPAREN + 
+funcdef = (ident + Optional(Suppress("::") + ident) + Suppress(":") + (Suppress("fn") | Suppress("proc")) + OPAREN + 
           Group(arg_list + CPAREN + Optional(Suppress("->") + type_)) +
           (compoundfunc | eqfunc | SEMI)).set_parse_action(FnDef)
+
 
 structdef = (ident + Suppress(":") + Suppress("struct") + OBRACE +
             ZeroOrMore(ident + Suppress(":") + type_ + SEMI) + CBRACE).set_parse_action(StructDef)

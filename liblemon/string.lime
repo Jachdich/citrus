@@ -7,4 +7,5 @@ String: struct {
 	data: char*;
 }
 
-String_new: fn(data: char*) = String { length: strlen(data), data: data };
+String::new: fn(data: char*) = String { length: strlen(data), data: data };
+//String::to_vec: fn(self: String*) -> Vec<String> = Vec::from_pointer(self.data, self.length);

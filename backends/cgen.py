@@ -115,7 +115,7 @@ class CG:
                 return next(filter(lambda l: l.name == ast.val, locals)).ty
             return self.get_local(ast.val).ty
         elif type(ast) == StructInit:
-            return self.get_global(ast.struct_name)
+            return Type([Ident([self.get_global(ast.struct_name).name])])
         else:
             raise NotImplementedError(f"Not implemented figuring out type of ast {repr(ast)}")
     
@@ -285,6 +285,9 @@ class CG:
         
         self.locals[-1].append(LocalVar(ast.name, ast.ty))
     
+    def structinit(self, ast):
+        return f"({ast.struct_name}){{{', '.join([self.expr(v[1]) for v in ast.init_args])}}}"
+    
     def expr(self, ast):
         if type(ast) == BinOp:
             return self.binexpr(ast)
@@ -335,7 +338,7 @@ class CG:
         self.add_global(sig)
         
         if ast.forward_decl:
-            self.code += f"{self.get_type(sig.ret_ty)} {sig.name}({', '.join([str(ty) for ty in sig.args])});\n"
+            self.code += f"{self.get_type(sig.ret_ty)} {sig.name}({', '.join([self.get_type(ty) for ty in sig.args])});\n"
             return
         
         self.locals.append([])
@@ -354,9 +357,10 @@ class CG:
             actual_ret_ty = self.figure_out_type(ast.body)
             if not can_be_coerced(actual_ret_ty, ret_ty):
                 raise SyntaxError(f"Function '{str(ast)}' should return type '{ret_ty}', but last expression is of type '{actual_ret_ty}'")
+        
         sig.ret_ty = ret_ty
 
-        self.code += f"{sig.ret_ty} {sig.name}({', '.join([str(ty) + ' ' + str(name) for name, ty in ast.args])}) {{\n"
+        self.code += f"{self.get_type(sig.ret_ty)} {sig.name}({', '.join([self.get_type(ty) + ' ' + str(name) for name, ty in ast.args])}) {{\n"
         
         self.indent += 1
         for smt in ast.body.smts:
@@ -371,10 +375,10 @@ class CG:
         self.indent -= 1
         
     def structdef(self, smt):
-        self.code += "typedef struct " + smt.name + " {\n"
+        self.code += "typedef struct {\n"
         for name, ty in smt.members:
             self.code += "    " + self.get_type(ty) + " " + name + ";\n"
-        self.code += "};\n"
+        self.code += "} " + smt.name + ";\n"
         self.add_global(StructSig(smt.name, smt.members))
         
     def importsmt(self, smt, already_imported):
