@@ -68,6 +68,11 @@ class FuncSig:
         self.name = name
         self.args = args
         self.ret_ty = ret_ty
+        
+class StructSig:
+    def __init__(self, name, fields):
+        self.name = name
+        self.fields = fields
 
 class LocalVar:
     def __init__(self, name, ty):
@@ -293,6 +298,8 @@ class CG:
             return self.var_assign(ast)
         elif type(ast) == IfExpr:
             return self.ifexpr(ast)
+        elif type(ast) == StructInit:
+            return self.structinit(ast)
         else:
             print("Not implemented: expression type " + str(type(ast)))
             exit(1)
@@ -317,12 +324,15 @@ class CG:
         sig = FuncSig(ast.name, args, ret_ty)
         return sig
    
+    def add_global(self, glob):
+        for g in self.globals:
+            if g.name == glob.name:
+                raise SyntaxError(f"Redefinition of '{glob.name}'")
+        self.globals.append(glob)
+
     def funcdef(self, ast):
         sig = self.gen_fn_sig(ast)
-        for g in self.globals:
-            if type(g) == FuncSig and g.name == sig.name:
-                raise SyntaxError(f"Redefinition of function '{sig.name}'")
-        self.globals.append(sig)
+        self.add_global(sig)
         
         if ast.forward_decl:
             self.code += f"{self.get_type(sig.ret_ty)} {sig.name}({', '.join([str(ty) for ty in sig.args])});\n"
@@ -365,6 +375,7 @@ class CG:
         for name, ty in smt.members:
             self.code += "    " + self.get_type(ty) + " " + name + ";\n"
         self.code += "};\n"
+        self.add_global(StructSig(smt.name, smt.members))
         
     def importsmt(self, smt, already_imported):
         if not os.path.isfile(smt.fname):

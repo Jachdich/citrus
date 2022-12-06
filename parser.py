@@ -188,7 +188,7 @@ class StructDef:
 
 class StructInit:
     def __init__(self, tokens):
-        self.struct_name = tokens[0]
+        self.struct_name = tokens[0].val
         self.init_args = list(zip([n.val for n in tokens[1:][::2]], tokens[1:][1::2]))
 
     def __repr__(self):
