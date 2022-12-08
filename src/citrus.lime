@@ -1,5 +1,6 @@
 import "liblemon/io.lime"
 import "liblemon/string.lime"
+import "liblemon/mem.lime"
 
 Token: struct {
     type: u32;
@@ -10,7 +11,9 @@ Token: struct {
 }
 
 main: fn() -> i32 {
-    let lol = String { length: 0, data: 0 };
+    let data = malloc(10);
+    memset(data, 65, 10);
+    let lol = String { length: 10, data: data };
     putstr(lol&);
     0
 }

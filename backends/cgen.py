@@ -117,6 +117,8 @@ class CG:
             return self.get_local(ast.val).ty
         elif type(ast) == StructInit:
             return Type([Ident([self.get_global(ast.struct_name).name])])
+        elif type(ast) == FuncCall:
+            return self.get_global(ast.name).ret_ty
         else:
             raise NotImplementedError(f"Not implemented figuring out type of ast {repr(ast)}")
     
@@ -155,10 +157,10 @@ class CG:
         for a in ast.args:
             args.append(self.expr(a))
                     
-        if func_sig.ret_ty.name != "void":
+        if func_sig.ret_ty.name != "void" or func_sig.ret_ty.num_ptr != 0:
             # var_name = self.gen_var_name()
             # self.code += func_sig.ret_ty + " " + var_name + " = " + funcname + "(" + ", ".join(args) + ");\n"
-            # return var_name
+            # return var_nam
             return funcname + "(" + ", ".join(args) + ")"
         else:
             self.code += self.get_indent() + funcname + "(" + ", ".join(args) + ");\n"
@@ -185,9 +187,12 @@ class CG:
         # self.code += ty + " " + var_name + " = " + tmp_code + ";\n"
         # return var_name
         return tmp_code
+    
+    def unop(self, ast):
+        return ast.op + self.expr(ast.operand)
 
     def int_literal(self, ast):
-        ty = "i32" # TODO figure this out
+        # ty = "i32" # TODO figure this out
         # tmp = self.gen_var_name()
         # self.code += ty + " " + tmp + " = " + str(ast) + ";\n"
         # return tmp
@@ -292,6 +297,8 @@ class CG:
     def expr(self, ast):
         if type(ast) == BinOp:
             return self.binexpr(ast)
+        elif type(ast) == UnOp:
+            return self.unop(ast)
         elif type(ast) == IntLit:
             return self.int_literal(ast)
         elif type(ast) == FuncCall:
@@ -309,6 +316,7 @@ class CG:
             exit(1)
     
     def smt(self, ast):
+        print("smt", ast)
         if type(ast) == VarDef:
             self.vardef(ast)
         elif type(ast) == IfSmt:
@@ -316,7 +324,9 @@ class CG:
         elif type(ast) == WhileSmt:
             self.whilesmt(ast)
         else:
-            self.expr(ast)
+            res = self.expr(ast)
+            if res is not None:
+                self.code += res + ";\n"
     
     def gen_fn_sig(self, ast):
         ret_ty = ast.ret_ty
@@ -334,11 +344,11 @@ class CG:
                 raise SyntaxError(f"Redefinition of '{glob.name}'")
         self.globals.append(glob)
 
-    def funcdef(self, ast):
+    def funcdef(self, ast, always_forward=False):
         sig = self.gen_fn_sig(ast)
         self.add_global(sig)
         
-        if ast.forward_decl:
+        if ast.forward_decl or always_forward:
             self.code += f"{self.get_type(sig.ret_ty)} {sig.name}({', '.join([self.get_type(ty) for ty in sig.args])});\n"
             return
         
@@ -406,7 +416,7 @@ class CG:
         ast = parse(source)
         for smt in ast:
             if type(smt) == FnDef:
-                self.funcdef(smt)
+                self.funcdef(smt, True)
             elif type(smt) == StructDef:
                 self.structdef(smt)
             elif type(smt) == ImportSmt:

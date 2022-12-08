@@ -1,5 +1,5 @@
 OBJECTS := cio.o io.o string.o
-PYTHON = python
+PYTHON = python3.9
 
 liblemon.a: $(OBJECTS)
 	ar -rc $@ $^

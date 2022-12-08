@@ -1,7 +1,7 @@
 #include <stdio.h>
 
 typedef struct {
-  unsigned long length;
+  unsigned int length;
   char *data;
 } String;
 

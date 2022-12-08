@@ -1,7 +1,7 @@
 
 from pyparsing import *
 from string import printable
-
+ParserElement.enablePackrat()
 class IntLit:
     def __init__(self, tokens):
         self.val = int(tokens[0])
@@ -32,6 +32,14 @@ class BinOp:
         return "BinOp(" + f" {self.op} ".join(map(repr, self.operands)) + ")"
     def __str__(self):
         return f" {self.op} ".join(map(str, self.operands))
+
+class UnOp:
+    def __init__(self, tokens):
+        self.operand = tokens[0][0]
+        self.op = tokens[0][1]
+    
+    def __repr__(self):
+        return f"UnOp({self.operand}{self.op})"
 
 class ImportSmt:
     def __init__(self, tokens):
@@ -244,6 +252,7 @@ ifexpr = (Suppress("if") + expr + compoundexpr + Suppress("else") + compoundexpr
 nonmathexpr = (ifexpr | funccall | structinit | term | ident)
 mathexpr = infix_notation(nonmathexpr,
     [
+        (oneOf("* &"), 1, opAssoc.LEFT, UnOp),
         (oneOf("* / %"), 2, opAssoc.LEFT, BinOp),
         (oneOf("+ -"), 2, opAssoc.LEFT, BinOp),
         (oneOf(">= <= == > < !="), 2, opAssoc.LEFT, BinOp),
