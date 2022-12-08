@@ -81,12 +81,13 @@ class LocalVar:
 
 
 class CG:
-    def __init__(self):
+    def __init__(self, fname):
         self.code = ""
         self.globals = []
         self.locals = []
         self.var = 0
         self.indent = 0
+        self.already_imported = [os.path.abspath(fname)]
         
     def get_indent(self, offset=0):
         return " " * ((self.indent + offset) * 4)
@@ -381,24 +382,39 @@ class CG:
         self.code += "} " + smt.name + ";\n"
         self.add_global(StructSig(smt.name, smt.members))
         
-    def importsmt(self, smt, already_imported):
-        if not os.path.isfile(smt.fname):
-            raise ImportError(f"{smt.fname}: No such file or directlry")
-        with open(smt.fname, "r") as f:
-            source = f.read()
-            
-        already_imported.append(smt.fname)
+    def importsmt(self, smt, additional_dirs):
+        source = None
+        full_path = None
+        for dir in additional_dirs:
+            full_path = os.path.abspath(os.path.join(dir, smt.fname))
+            if os.path.isfile(full_path):
+                with open(full_path, "r") as f:
+                    source = f.read()
+                break
+        
+        if source is None:
+            raise ImportError(f"Unresolved import: '{smt.fname}'")
+        if full_path in self.already_imported:
+            # already done, bail
+            print("debug: ignoring import", full_path)
+            return
+        else:
+            print(full_path, "not in", self.already_imported)
+
+        self.already_imported.append(full_path)
         
         ast = parse(source)
         for smt in ast:
             if type(smt) == FnDef:
                 self.funcdef(smt)
-            elif type(smt) == ImportSmt and smt.fname not in already_imported:
-                # recursively import anything we haven't already
-                self.importsmt(smt, already_imported)
+            elif type(smt) == StructDef:
+                self.structdef(smt)
+            elif type(smt) == ImportSmt:
+                # recursively import
+                self.importsmt(smt, additional_dirs)
         
 
-    def gen(self, ast, fname, debug=False):
+    def gen(self, ast, debug, imports):
         pprint(ast.as_list())
         for smt in ast:
             if type(smt) == FnDef:
@@ -406,7 +422,7 @@ class CG:
             elif type(smt) == StructDef:
                 self.structdef(smt)
             elif type(smt) == ImportSmt:
-                self.importsmt(smt, [fname])
+                self.importsmt(smt, imports)
             else:
                 print(f"Invalid syntax: Unexpected token '{smt}'")
                 exit(1)

@@ -10,5 +10,7 @@ Token: struct {
 }
 
 main: fn() -> i32 {
+    let lol = String { length: 0, data: 0 };
+    putstr(lol&);
     0
 }

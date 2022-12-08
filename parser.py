@@ -44,8 +44,13 @@ class ImportSmt:
 
 class FnDef:
     def __init__(self, tokens):
-        print(tokens)
-        self.name = tokens[0].val
+        if len(tokens[0]) == 1:
+            self.name = tokens[0][0].val
+            self.assoc_struct = None
+        else:
+            self.name = tokens[0][1].val
+            self.assoc_struct = tokens[0][0].val
+
         self.args = list(zip([n.val for n in tokens[1][0][::2]], tokens[1][0][1::2])) # (name, type) pairs
         self.ret_ty = tokens[1][1] if len(tokens[1]) > 1 else None
         if len(tokens) == 3:
@@ -55,6 +60,17 @@ class FnDef:
             self.forward_decl = True
             self.body = None
     
+    def __getattribute__(self, val):
+        """super hacky shit to basically get the right name, cos I'm lazy"""
+        if val == "name":
+            if self.assoc_struct is None:
+                return super().__getattribute__("name")
+            else:
+                return self.assoc_struct + "_" + super().__getattribute__("name")
+        else:
+            return super().__getattribute__(val)
+
+     
     def __repr__(self):
         return f"FnDef({self.name}({', '.join([str(a) + ': ' + str(b) for a, b in self.args])}) = {self.body})"
 
@@ -80,9 +96,7 @@ class VarDef:
         self.val = None
         
         while len(tokens) > 0:
-            if type(tokens[0]) == Ident:
-                self.ty = tokens[0].val
-            elif type(tokens[0]) == FnType:
+            if type(tokens[0]) == Type:
                 self.ty = tokens[0]
             else:
                 self.val = tokens[0]
@@ -240,7 +254,7 @@ mathexpr = infix_notation(nonmathexpr,
 eqfunc       =  (EQ + expr + SEMI).set_parse_action(CompoundExpr)
 compoundfunc =  compoundexpr | compoundsmt
 
-funcdef = (ident + Optional(Suppress("::") + ident) + Suppress(":") + (Suppress("fn") | Suppress("proc")) + OPAREN + 
+funcdef = (Group(ident + Optional(Suppress("::") + ident)) + Suppress(":") + (Suppress("fn") | Suppress("proc")) + OPAREN + 
           Group(arg_list + CPAREN + Optional(Suppress("->") + type_)) +
           (compoundfunc | eqfunc | SEMI)).set_parse_action(FnDef)
 

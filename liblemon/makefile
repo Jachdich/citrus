@@ -1,16 +1,18 @@
-OBJECTS := io.o string.o
-PYTHON = python3.9
+OBJECTS := cio.o io.o string.o
+PYTHON = python
 
 liblemon.a: $(OBJECTS)
 	ar -rc $@ $^
 	ranlib $@
 
 %.o: %.c
-	gcc -c -o $@ $^
+	gcc -c -g -o $@ $^
 
 %.o: %.s
 	gcc -c -o $@ $^
 
 %.c: %.lime
-	$(PYTHON) ../main.py -g -b c -o $@ $^
+	$(PYTHON) ../main.py -I .. -g -b c -o $@ $^
 	
+clean:
+	rm *.o *.a io.c string.c

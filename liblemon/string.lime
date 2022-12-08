@@ -1,4 +1,4 @@
-import "mem.lime"
+import "liblemon/mem.lime"
 
 strlen: fn(data: char*) -> u64;
 

@@ -1,1 +1,3 @@
+import "liblemon/string.lime"
 putd: fn(a: i64);
+putstr: fn(s: String*);
