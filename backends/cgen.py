@@ -6,12 +6,6 @@ from parser import *
 
 INT_TYPES = ["i8", "i16", "i32", "i64", "u8", "u16", "u32", "u64"]
 
-def is_valid_type(ty):
-    return ty.name in ["i32", "i64", "i16", "i8", "u64", "u32", "u16", "u8", "f64", "f32", "char", "void"]
-
-def check_valid_type(ty):
-    if not is_valid_type(ty):
-        raise SyntaxError(f"Unknown type '{ty}'")
         
 def can_be_coerced(from_, to):
     # same type always able to convert
@@ -88,7 +82,17 @@ class CG:
         self.var = 0
         self.indent = 0
         self.already_imported = [os.path.abspath(fname)]
-        
+    
+    
+    def is_valid_type(self, ty):
+        if ty.name in ["i32", "i64", "i16", "i8", "u64", "u32", "u16", "u8", "f64", "f32", "char", "void"]:
+            return True
+        return self.get_global(ty.name) != None
+
+    def check_valid_type(self, ty):
+        if not self.is_valid_type(ty):
+            raise SyntaxError(f"Unknown type '{ty}'")
+    
     def get_indent(self, offset=0):
         return " " * ((self.indent + offset) * 4)
     
@@ -333,7 +337,7 @@ class CG:
         if ret_ty is None:
             ret_ty = Type([Ident(["void"])])
         
-        check_valid_type(ret_ty)
+        self.check_valid_type(ret_ty)
         args = [a[1] for a in ast.args] # just types
         sig = FuncSig(ast.name, args, ret_ty)
         return sig
@@ -358,7 +362,7 @@ class CG:
         
         # add locals to symtable
         for name, ty in ast.args:
-            check_valid_type(ty)
+            self.check_valid_type(ty)
             self.locals[-1].append(LocalVar(name, ty))
 
         ret_ty = ast.ret_ty

@@ -252,6 +252,7 @@ ifexpr = (Suppress("if") + expr + compoundexpr + Suppress("else") + compoundexpr
 nonmathexpr = (ifexpr | funccall | structinit | term | ident)
 mathexpr = infix_notation(nonmathexpr,
     [
+        (".", 2, opAssoc.LEFT, BinOp),
         (oneOf("* &"), 1, opAssoc.LEFT, UnOp),
         (oneOf("* / %"), 2, opAssoc.LEFT, BinOp),
         (oneOf("+ -"), 2, opAssoc.LEFT, BinOp),
@@ -261,7 +262,7 @@ mathexpr = infix_notation(nonmathexpr,
 )
 
 eqfunc       =  (EQ + expr + SEMI).set_parse_action(CompoundExpr)
-compoundfunc =  compoundexpr | compoundsmt
+compoundfunc =  EQ + (compoundexpr | compoundsmt) + Optional(SEMI)
 
 funcdef = (Group(ident + Optional(Suppress("::") + ident)) + Suppress(":") + (Suppress("fn") | Suppress("proc")) + OPAREN + 
           Group(arg_list + CPAREN + Optional(Suppress("->") + type_)) +
@@ -276,7 +277,7 @@ vardef = Group(Suppress("let") + ident + Optional(COLON + type_) + Optional(EQ +
 whilesmt = (Suppress("while") + expr + compoundsmt).set_parse_action(WhileSmt)
 
 ifsmt  = (Suppress("if") + expr + compoundsmt + Optional(Suppress("else") + compoundsmt)).set_parse_action(IfSmt)
-expr << (mathexpr | nonmathexpr)
+expr << (compoundexpr | mathexpr | nonmathexpr)
 
 smt << (whilesmt | vardef | ifsmt | (expr + Suppress(";")))
 prog = ZeroOrMore(importsmt | funcdef | structdef)

@@ -10,10 +10,16 @@ Token: struct {
     col: u32;
 }
 
-main: fn() -> i32 {
+printtoken: fn(tok: Token*) = {
+    putstr(tok.text&);
+}
+
+main: fn() -> i32 = {
     let data = malloc(10);
     memset(data, 65, 10);
     let lol = String { length: 10, data: data };
     putstr(lol&);
+    let tok = Token { type: 0, text: lol, indent: 1, line: 69, col: 420 };
+    printtoken(tok&);
     0
 }
