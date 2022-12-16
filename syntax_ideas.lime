@@ -7,16 +7,13 @@ struct S {
 
 
 //modified rust style fn
-fn do_nothing(a: u32) -> u32 = {
+do_nothing: fn(a: u32) -> u32 = {
     a
 }
 
 //functions with a single expression can be written as such
-fn add(x: i32, y: i32) -> i32 = x + y;
-fn add(x: i32, y: i32) = x + y; //it can infer the return type
-
-add = fn(x: i32, y: i32) = x + y;
-
+add: fn(x: i32, y: i32) -> i32 = x + y;
+add: fn(x: i32, y: i32) = x + y; //it can infer the return type
 
 //should I allow associated methods? or use c-style and pass pointers to functions
 //  idea: assign anonymous function to function pointer field of struct
@@ -25,11 +22,7 @@ struct AssocMethod {
 	some_data: i32;
 }
 
-//perhaps need some way of marking some_fn as static or this line makes no sense
-AssocMethod.some_fn = fn(x: i32, y: i32) = x + y;
-
-//...or perhaps do it like this
-fn AssocMethod::some_fn(x: i32, y: i32) = x + y;
+AssocMethod::some_fn: fn(x: i32, y: i32) = x + y;
 
 //implicitly pass a self pointer when calling such associated methods
 //e.g.
@@ -37,7 +30,7 @@ fn AssocMethod::some_fn(x: i32, y: i32) = x + y;
 //s.can_access_self()
 //same as
 //AssocMethod::can_access_self(s&);
-fn AssocMethod::can_access_self(self: AssocMethod*) = self.some_data;
+AssocMethod::can_access_self: fn(self: AssocMethod*) = self.some_data;
 
 
 
@@ -55,22 +48,18 @@ union Option<T> {
 	None;
 }
 
-fn can_fail() -> Option<i32> = None
-fn can_fail() -> Option<i32> = {
+can_fail: fn() -> Option<i32> = None
+can_fail: fn() -> Option<i32> = {
 	None
 }
 
-fn handle_fail() -> Option<i32> = {
+handle_fail: fn() -> Option<i32> = {
 	let res_a = can_fail()?; //rust style ? syntax
 	let res_b = can_fail()?;
 	Some(a + b)
 }
 
-main: fn() = {
-	
-}
-
-fn main() -> i32 = {
+main: proc() -> i32 = {
     let a: u32 = 32;
     let b = &a; //b is pointer not reference because pointers are based
     let c: u8[4] /* is [u8; 4] better? */ = *b;
@@ -88,4 +77,30 @@ fn main() -> i32 = {
 	//idk about the two =s though. they look a bit unclean;
 	
 	0 //success from main
+}
+
+
+//procs can have side effects
+//fns are pure functions
+//procs can call procs or fns
+//fns can only call fns
+something: fn() = {
+	putd(6); //ERROR: can't call proc from fn
+}
+
+
+//eating??
+split_eat: fn(a: eats String*) -> Vec<String> = {
+	//doesn't preserve data in `a`
+	//use of whatever was passed to the fn is prohibited
+}
+
+split_copy: fn(a: String*) -> Vec<String> = {
+	//here whatever struct `a` was must still be valid later
+}
+
+foo: fn() = {
+	let str = String::from_static("asd");
+	let splits = str.split_eat();
+	putstr(str&); //ERROR: use after eat
 }
