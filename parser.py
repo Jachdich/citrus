@@ -60,7 +60,7 @@ class FnDef:
             self.name = tokens[0][1].val
             self.assoc_struct = tokens[0][0].val
         
-        self.template_args = tokens[1]
+        self.template_args = [i.val for i in tokens[1]]
         
         self.args = list(zip([n.val for n in tokens[2][0][::2]], tokens[2][0][1::2])) # (name, type) pairs
         self.ret_ty = tokens[2][1] if len(tokens[2]) > 1 else None

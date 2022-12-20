@@ -34,12 +34,12 @@ def combine_types(lty, rty):
     if lty.num_ptr != 0 or rty.num_ptr != 0:
         raise SyntaxError("Pointer arith isn't supported yet")
     num_tys = INT_TYPES + ["f32", "f64"]
-    if rty in INT_TYPES and lty in INT_TYPES:
+    if rty.name in INT_TYPES and lty.name in INT_TYPES:
         # both ints, biggest wins
-        lsigned = lty[0] == "i"
-        rsigned = rty[0] == "i"
-        lbits = int(lty[1:])
-        rbits = int(rty[1:])
+        lsigned = lty.name[0] == "i"
+        rsigned = rty.name[0] == "i"
+        lbits = int(lty.name[1:])
+        rbits = int(rty.name[1:])
         if lsigned or rsigned:
             outsigned = "i"
             signed = True
@@ -48,20 +48,21 @@ def combine_types(lty, rty):
             signed = False
 
         outbits = max(lbits, rbits)
-        return outsigned + str(outbits)
-    elif rty in num_tys and lty in num_tys:
+        return Type([Ident([outsigned + str(outbits)])])
+
+    elif rty.name in num_tys and lty.name in num_tys:
         # at least one is float, return biggest flaot type
-        if lty[0] == "f":
-            lfbits = int(lty[1:])
+        if lty.name[0] == "f":
+            lfbits = int(lty.name[1:])
         else:
             lfbits = 0
-        if rty[0] == "f":
-            rfbits = int(rty[1:])
+        if rty.name[0] == "f":
+            rfbits = int(rty.name[1:])
         else:
             rfbits = 0
         
         outbits = max(lfbits, rfbits)
-        return "f" + str(outbits)
+        return Type([ident(["f" + str(outbits)])])
     else:
         raise SyntaxError(f"Cannot combine types '{lhs}' and '{rhs}'")
 
@@ -113,10 +114,12 @@ class CG:
         if locals == None:
             locals = []
         if type(ast) == IntLit:
+            # HACK: figure out proper type
             return Type([Ident(["u16"])])
         elif type(ast) == BinOp:
             lty = self.figure_out_type(ast.operands[0])
             if ast.op == ".":
+                # HACK: assumes only one . (a.b.c is not valid)
                 sig = self.get_global(self.figure_out_type(ast.operands[0]).name)
                 if ast.operands[1].val in [i[0] for i in sig.fields]:
                     return [i[1] for i in sig.fields if i[0] == ast.operands[1].val][0] # hacky shit
@@ -147,6 +150,7 @@ class CG:
                 ty = self.figure_out_type(ast.operand)
                 ty.num_ptr += 1
                 return ty
+            # TODO support *
         else:
             raise NotImplementedError(f"Not implemented figuring out type of ast {repr(ast)}")
     
@@ -179,17 +183,27 @@ class CG:
         num_args = len(ast.args)
         if num_args != len(func_sig.args):
             raise SyntaxError(f"Function '{funcname}' expects {len(func_sig.args)} args but {num_args} were given")
-        # TODO arg types
         
         args = []
-        arg_types = []
+        templates = {}
         for i, a in enumerate(ast.args):
-            actual_ty = self.figure_out_type(a)            
-            arg_types.append(actual_ty)
-            if not can_be_coerced(actual_ty, func_sig.args[i]):
-                raise SyntaxError(f"Function '{funcname}' expects argument argument {i + 1} to be of type '{func_sig.args[i]}', but it is actually type '{actual_ty}'")
+            actual_ty = self.figure_out_type(a)
+            expected_ty = func_sig.args[i]
+            if expected_ty.name in func_sig.ast.template_args:
+                templates[expected_ty] = actual_ty
+            else:
+                print(expected_ty.name, "not in", func_sig.ast.template_args)
+                if not can_be_coerced(actual_ty, expected_ty):
+                    raise SyntaxError(f"Function '{funcname}' expects argument argument {i + 1} to be of type '{expected_ty}', but it is actually type '{actual_ty}'")
             args.append(self.expr(a))
-                    
+        
+        if func_sig.is_generic:
+            # HACK save code, kinda hacky
+            code = self.code
+            self.code = ""
+            self.make_fn_from_sig(func_sig, with_template_args=templates)
+            self.code = code
+
         if func_sig.ret_ty.name != "void" or func_sig.ret_ty.num_ptr != 0:
             # var_name = self.gen_var_name()
             # self.code += func_sig.ret_ty + " " + var_name + " = " + funcname + "(" + ", ".join(args) + ");\n"
@@ -211,6 +225,7 @@ class CG:
         
         # operator. gets special treatment
         if op == ".":
+            # TODO: check that each field exists
             lval = ast.operands[0]
             ty = self.figure_out_type(lval)
             rvals = ast.operands[1:]
