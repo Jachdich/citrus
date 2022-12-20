@@ -11,13 +11,21 @@ def can_be_coerced(from_, to):
     # same type always able to convert
     if from_ == to: return True
     
+    if from_.num_ptr == 1 and (from_.name == "void" or to.name == "void"):
+        # void pointers are coercible to and from any type
+        return True
+    
     if from_.name in INT_TYPES and to.name in INT_TYPES:
-        if from_.name[0] != to.name[0]:
-            return False # can't coerce signed to unsigned or vice versa
+        if from_.name[0] == "i" and to.name[0] == "u":
+            return False # can't coerce signed to unsigned
+
         fbits = int(from_.name[1:])
         tbits = int(to.name[1:])
-        # can coerce if dest bits >= source bits
-        return tbits >= fbits
+        if from_.name[0] == "u" and to.name[0] == "i":
+            return tbits > fbits # must have more bits in the signed to fit the unsigned
+        else:
+            # same signedness can coerce if dest bits >= source bits
+            return tbits >= fbits
     
     # TODO support other datatypes
     return False
@@ -58,10 +66,12 @@ def combine_types(lty, rty):
         raise SyntaxError(f"Cannot combine types '{lhs}' and '{rhs}'")
 
 class FuncSig:
-    def __init__(self, name, args, ret_ty):
+    def __init__(self, name, args, ret_ty, ast, generic=False):
         self.name = name
         self.args = args
         self.ret_ty = ret_ty
+        self.is_generic = generic
+        self.ast = ast
         
 class StructSig:
     def __init__(self, name, fields):
@@ -77,11 +87,14 @@ class LocalVar:
 class CG:
     def __init__(self, fname):
         self.code = ""
+        self.fns = []
+        self.structs = []
         self.globals = []
         self.locals = []
         self.var = 0
         self.indent = 0
         self.already_imported = [os.path.abspath(fname)]
+        self.forward_defs = []
     
     
     def is_valid_type(self, ty):
@@ -100,9 +113,15 @@ class CG:
         if locals == None:
             locals = []
         if type(ast) == IntLit:
-            return Type([Ident(["i32"])])
+            return Type([Ident(["u16"])])
         elif type(ast) == BinOp:
             lty = self.figure_out_type(ast.operands[0])
+            if ast.op == ".":
+                sig = self.get_global(self.figure_out_type(ast.operands[0]).name)
+                if ast.operands[1].val in [i[0] for i in sig.fields]:
+                    return [i[1] for i in sig.fields if i[0] == ast.operands[1].val][0] # hacky shit
+                else:
+                    raise SyntaxErro(f"bad field {ast.operands[1]} in {ast.operands[0]}")
             for rty in map(self.figure_out_type, ast.operands[1:]):
                 lty = combine_types(lty, rty)
             return lty
@@ -123,6 +142,11 @@ class CG:
             return Type([Ident([self.get_global(ast.struct_name).name])])
         elif type(ast) == FuncCall:
             return self.get_global(ast.name).ret_ty
+        elif type(ast) == UnOp:
+            if ast.op == "&":
+                ty = self.figure_out_type(ast.operand)
+                ty.num_ptr += 1
+                return ty
         else:
             raise NotImplementedError(f"Not implemented figuring out type of ast {repr(ast)}")
     
@@ -151,14 +175,19 @@ class CG:
         func_sig = self.get_global(funcname)
         if func_sig is None:
             raise SyntaxError(f"Unknown function '{funcname}'")
-            
+        
         num_args = len(ast.args)
         if num_args != len(func_sig.args):
             raise SyntaxError(f"Function '{funcname}' expects {len(func_sig.args)} args but {num_args} were given")
         # TODO arg types
         
         args = []
-        for a in ast.args:
+        arg_types = []
+        for i, a in enumerate(ast.args):
+            actual_ty = self.figure_out_type(a)            
+            arg_types.append(actual_ty)
+            if not can_be_coerced(actual_ty, func_sig.args[i]):
+                raise SyntaxError(f"Function '{funcname}' expects argument argument {i + 1} to be of type '{func_sig.args[i]}', but it is actually type '{actual_ty}'")
             args.append(self.expr(a))
                     
         if func_sig.ret_ty.name != "void" or func_sig.ret_ty.num_ptr != 0:
@@ -179,17 +208,26 @@ class CG:
             rval = self.expr(ast.operands[1])
             self.code += self.get_indent() + ast.operands[0].val + " " + op + " " + rval + ";\n"
             return ast.operands[0].val
-
+        
+        # operator. gets special treatment
+        if op == ".":
+            lval = ast.operands[0]
+            ty = self.figure_out_type(lval)
+            rvals = ast.operands[1:]
+            if ty.num_ptr == 0:
+                tmp_code += "(" + self.expr(lval) + ")." + ".".join([val.val for val in rvals])
+            elif ty.num_ptr == 1:
+                tmp_code += "(" + self.expr(lval) + ")->" + ".".join([val.val for val in rvals])
+            else:
+                raise SyntaxError("Can't access field '" + rvals[0].val + "' on object of type " + str(ty))
+            return tmp_code
+            
         for i, expr in enumerate(ast.operands):
             resval = self.expr(expr)
             tmp_code += resval
             if i < len(ast.operands) - 1:
                 tmp_code += op
                 
-        # ty = self.figure_out_type(ast)
-        # var_name = self.gen_var_name()
-        # self.code += ty + " " + var_name + " = " + tmp_code + ";\n"
-        # return var_name
         return tmp_code
     
     def unop(self, ast):
@@ -337,9 +375,13 @@ class CG:
         if ret_ty is None:
             ret_ty = Type([Ident(["void"])])
         
-        self.check_valid_type(ret_ty)
+        if len(ast.template_args) != 0:
+            generic = True
+        else:
+            generic = False
+            self.check_valid_type(ret_ty)
         args = [a[1] for a in ast.args] # just types
-        sig = FuncSig(ast.name, args, ret_ty)
+        sig = FuncSig(ast.name, args, ret_ty, ast, generic)
         return sig
    
     def add_global(self, glob):
@@ -351,49 +393,67 @@ class CG:
     def funcdef(self, ast, always_forward=False):
         sig = self.gen_fn_sig(ast)
         self.add_global(sig)
+        if sig.is_generic:
+            # don't make the function yet!
+            return
         
-        if ast.forward_decl or always_forward:
-            self.code += f"{self.get_type(sig.ret_ty)} {sig.name}({', '.join([self.get_type(ty) for ty in sig.args])});\n"
+        self.make_fn_from_sig(sig, always_forward)
+        
+    def make_fn_from_sig(self, sig, always_forward=False, with_template_args=None):
+        if self.code != "":
+            raise RuntimeError("Expected code to be empty, but it contained '" + self.code + "'")
+        if with_template_args is None:
+            with_template_args = {Type([Ident(["T"])]): Type([Ident(["i32"])])}
+        
+        get_real_type = lambda ty: with_template_args.get(ty, ty)
+        
+        if sig.ast.forward_decl or always_forward:
+            self.forward_defs.append(f"{self.get_type(get_real_type(sig.ret_ty))} {sig.name}({', '.join([self.get_type(get_real_type(ty)) for ty in sig.args])});")
             return
         
         self.locals.append([])
         
-        locdefs = filter(lambda n: type(n) == VarDef, ast.body.smts)
+        locdefs = filter(lambda n: type(n) == VarDef, sig.ast.body.smts)
         
         # add locals to symtable
-        for name, ty in ast.args:
+        for name, ty in sig.ast.args:
+            if ty in with_template_args:
+                ty = with_template_args[ty]
             self.check_valid_type(ty)
             self.locals[-1].append(LocalVar(name, ty))
 
-        ret_ty = ast.ret_ty
+        ret_ty = get_real_type(sig.ast.ret_ty)
         if ret_ty is None:
-            ret_ty = self.figure_out_type(ast.body)
+            ret_ty = self.figure_out_type(sig.ast.body)
         else:
-            actual_ret_ty = self.figure_out_type(ast.body)
+            actual_ret_ty = self.figure_out_type(sig.ast.body)
             if not can_be_coerced(actual_ret_ty, ret_ty):
-                raise SyntaxError(f"Function '{str(ast)}' should return type '{ret_ty}', but last expression is of type '{actual_ret_ty}'")
+                raise SyntaxError(f"Function '{str(sig.ast)}' should return type '{ret_ty}', but last expression is of type '{actual_ret_ty}'")
         
         sig.ret_ty = ret_ty
 
-        self.code += f"{self.get_type(sig.ret_ty)} {sig.name}({', '.join([self.get_type(ty) + ' ' + str(name) for name, ty in ast.args])}) {{\n"
+        self.code += f"{self.get_type(sig.ret_ty)} {sig.name}({', '.join([self.get_type(get_real_type(ty)) + ' ' + str(name) for name, ty in sig.ast.args])}) {{\n"
         
         self.indent += 1
-        for smt in ast.body.smts:
+        for smt in sig.ast.body.smts:
             self.smt(smt)
         
-        if type(ast.body) == CompoundExpr:
-            ret_val = self.expr(ast.body.expr)
+        if type(sig.ast.body) == CompoundExpr:
+            ret_val = self.expr(sig.ast.body.expr)
             self.code += self.get_indent() + "return " + ret_val + ";\n"
             
         self.locals.pop()
         self.code += "}\n"
         self.indent -= 1
+        self.fns.append(self.code)
+        self.code = ""
         
     def structdef(self, smt):
-        self.code += "typedef struct {\n"
+        code = "typedef struct {\n"
         for name, ty in smt.members:
-            self.code += "    " + self.get_type(ty) + " " + name + ";\n"
-        self.code += "} " + smt.name + ";\n"
+            code += "    " + self.get_type(ty) + " " + name + ";\n"
+        code += "} " + smt.name + ";\n"
+        self.structs.append(code)
         self.add_global(StructSig(smt.name, smt.members))
         
     def importsmt(self, smt, additional_dirs):
@@ -430,6 +490,8 @@ class CG:
 
     def gen(self, ast, debug, imports):
         pprint(ast.as_list())
+        # print(reconst_src(ast))
+        print()
         for smt in ast:
             if type(smt) == FnDef:
                 self.funcdef(smt)
@@ -457,4 +519,7 @@ class CG:
 #define f32 float
 #define f64 double
 """
-        return defs + self.code
+        forwards = "\n".join(self.forward_defs)
+        fns = "\n".join(self.fns)
+        structs = "\n".join(self.structs)
+        return defs + "\n" + structs + "\n" + forwards + "\n" + fns + "\n"

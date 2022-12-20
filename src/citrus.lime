@@ -2,6 +2,16 @@ import "liblemon/io.lime"
 import "liblemon/string.lime"
 import "liblemon/mem.lime"
 
+some_thing: fn<T>(a: T) -> T = a + 1;
+
+// SomeStruct: struct<T> {
+//     a: T;
+// }
+
+// some_other_thing: fn<T>(a: SomeStruct<T>*) = {
+//     a.a = 3;
+// }
+
 Token: struct {
     type: u32;
     text: String;
@@ -14,12 +24,22 @@ printtoken: fn(tok: Token*) = {
     putstr(tok.text&);
 }
 
-main: fn() -> i32 = {
+test_stuff: fn() = {
     let data = malloc(10);
     memset(data, 65, 10);
     let lol = String { length: 10, data: data };
-    putstr(lol&);
     let tok = Token { type: 0, text: lol, indent: 1, line: 69, col: 420 };
     printtoken(tok&);
+    free(lol.data);
+}
+
+main: fn() -> i32 = {
+    let a: i64 = 16;
+    let b: i32 = 8;
+    let c = some_thing(a);
+    let d = some_thing(b);
+    putd(c);
+    putd(b);
+    test_stuff();
     0
 }

@@ -52,18 +52,21 @@ class ImportSmt:
 
 class FnDef:
     def __init__(self, tokens):
+        print(tokens)
         if len(tokens[0]) == 1:
             self.name = tokens[0][0].val
             self.assoc_struct = None
         else:
             self.name = tokens[0][1].val
             self.assoc_struct = tokens[0][0].val
-
-        self.args = list(zip([n.val for n in tokens[1][0][::2]], tokens[1][0][1::2])) # (name, type) pairs
-        self.ret_ty = tokens[1][1] if len(tokens[1]) > 1 else None
-        if len(tokens) == 3:
+        
+        self.template_args = tokens[1]
+        
+        self.args = list(zip([n.val for n in tokens[2][0][::2]], tokens[2][0][1::2])) # (name, type) pairs
+        self.ret_ty = tokens[2][1] if len(tokens[2]) > 1 else None
+        if len(tokens) == 4:
             self.forward_decl = False
-            self.body = tokens[2]
+            self.body = tokens[3]
         else:
             self.forward_decl = True
             self.body = None
@@ -80,7 +83,7 @@ class FnDef:
 
      
     def __repr__(self):
-        return f"FnDef({self.name}({', '.join([str(a) + ': ' + str(b) for a, b in self.args])}) = {self.body})"
+        return f"FnDef({self.name}<{self.template_args}>({', '.join([str(a) + ': ' + str(b) for a, b in self.args])}) = {self.body})"
 
 
 class VarAssign:
@@ -174,6 +177,7 @@ class FuncCall:
 
 class Type:
     def __init__(self, tokens):
+        print("TYPE TOKENS", tokens)
         if tokens[0] == "fn":
             self.fn_ptr = True
             self.args = list(zip([n.val for n in tokens[1][::2]], tokens[1][1::2])) # (name, type) pairs
@@ -184,13 +188,13 @@ class Type:
                 
         else:
             self.fn_ptr = False
-            if type(tokens[0]) == str:
+            if type(tokens[0]) == str and tokens[0] == "*":
                 self.name = "void"
                 self.num_ptr = len(tokens)
             else:
                 self.name = tokens[0].val
                 if len(tokens) > 1:
-                    self.num_ptr = len(tokens[1:])
+                    self.num_ptr = len([n for n in tokens[1:] if n == "*"])
                 else:
                     self.num_ptr = 0
 
@@ -199,11 +203,20 @@ class Type:
             return f"fn({', '.join([n + ': ' + repr(t) for n, t in self.args])})" + (("-> " + self.ty.val) if self.ty is not None else "")
         else:
             return "Type(" + self.name + "*" * self.num_ptr + ")"
+    
+    def __eq__(self, other):
+        # TODO SUPER FUCKING HACKY! DO IT BETTER
+        # HACK
+        return self.name == other.name and self.num_ptr == other.num_ptr
+    
+    def __hash__(self):
+        return hash(self.name) ^ hash(self.num_ptr)
 
 class StructDef:
     def __init__(self, tokens):
         self.name = tokens[0].val
-        self.members = list(zip([n.val for n in tokens[1:][::2]], tokens[1:][1::2]))
+        self.template_args = tokens[1]
+        self.members = list(zip([n.val for n in tokens[2:][::2]], tokens[2:][1::2]))
     
     def __repr__(self):
         return f"Struct({self.name} {{{', '.join([n + ': ' + repr(t) for n, t in self.members])}}})"
@@ -231,8 +244,11 @@ expr = Forward()
 smt = Forward()
 type_ = Forward()
 
+template_list = Group(Suppress("<") + delimitedList(ident) + Suppress(">"))
 arg_list = Group(ZeroOrMore(ident + COLON + type_ + COMMA) + Optional(ident + COLON + type_))
-type_ << ((Literal("fn") + OPAREN + arg_list + CPAREN + Optional(Suppress("->") + type_)) | (ident + ZeroOrMore("*")) | Literal("*")).set_parse_action(Type)
+type_ << ((Literal("fn") + OPAREN + arg_list + CPAREN + Optional(Suppress("->") + type_)) |
+          (ident + Optional(template_list, []) + ZeroOrMore("*")) |
+          Literal("*")).set_parse_action(Type)
 
 # term = (OPAREN + expr + CPAREN) | number | Group(ident).set_results_name("ident")
 term = number | ident
@@ -264,12 +280,14 @@ mathexpr = infix_notation(nonmathexpr,
 eqfunc       =  (EQ + expr + SEMI).set_parse_action(CompoundExpr)
 compoundfunc =  EQ + (compoundexpr | compoundsmt) + Optional(SEMI)
 
-funcdef = (Group(ident + Optional(Suppress("::") + ident)) + Suppress(":") + (Suppress("fn") | Suppress("proc")) + OPAREN + 
-          Group(arg_list + CPAREN + Optional(Suppress("->") + type_)) +
+funcdef = (Group(ident + Optional(Suppress("::") + ident)) + Suppress(":") + (Suppress("fn") | Suppress("proc")) +
+          Optional(template_list, []) +
+          OPAREN + Group(arg_list + CPAREN + Optional(Suppress("->") + type_)) +
           (compoundfunc | eqfunc | SEMI)).set_parse_action(FnDef)
 
 
-structdef = (ident + Suppress(":") + Suppress("struct") + OBRACE +
+structdef = (ident + Suppress(":") + Suppress("struct") + 
+            Optional(template_list, []) + OBRACE +
             ZeroOrMore(ident + Suppress(":") + type_ + SEMI) + CBRACE).set_parse_action(StructDef)
 
 vardef = Group(Suppress("let") + ident + Optional(COLON + type_) + Optional(EQ + expr) + SEMI).set_parse_action(VarDef)
