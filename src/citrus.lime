@@ -20,11 +20,11 @@ Token: struct {
     col: u32;
 }
 
-printtoken: fn(tok: Token*) = {
+printtoken: proc(tok: Token*) = {
     putstr(tok.text&);
 }
 
-test_stuff: fn() = {
+test_stuff: proc() = {
     let data = malloc(10);
     memset(data, 65, 10);
     let lol = String { length: 10, data: data };
@@ -35,11 +35,11 @@ test_stuff: fn() = {
 
 main: fn() -> i32 = {
     let a: i64 = 16;
-    let b: i32 = 8;
+    let b: u32 = 8;
     let c = some_thing(a);
     let d = some_thing(b);
     putd(c);
-    putd(b);
+    putd(d);
     test_stuff();
     0
 }

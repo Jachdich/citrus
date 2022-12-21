@@ -177,9 +177,9 @@ class FuncCall:
 
 class Type:
     def __init__(self, tokens):
-        print("TYPE TOKENS", tokens)
         if tokens[0] == "fn":
             self.fn_ptr = True
+            self.name = "fn"
             self.args = list(zip([n.val for n in tokens[1][::2]], tokens[1][1::2])) # (name, type) pairs
             if len(tokens) > 2:
                 self.ty = tokens[2]
@@ -205,12 +205,16 @@ class Type:
             return "Type(" + self.name + "*" * self.num_ptr + ")"
     
     def __eq__(self, other):
-        # TODO SUPER FUCKING HACKY! DO IT BETTER
-        # HACK
-        return self.name == other.name and self.num_ptr == other.num_ptr
+        if self.fn_ptr:
+            return self.args == other.args and self.ty == other.ty
+        else:
+            return self.name == other.name and self.num_ptr == other.num_ptr
     
     def __hash__(self):
-        return hash(self.name) ^ hash(self.num_ptr)
+        if self.fn_ptr:
+            return hash(self.args) ^ hash(self.ty)
+        else:
+            return hash(self.name) ^ hash(self.num_ptr)
 
 class StructDef:
     def __init__(self, tokens):

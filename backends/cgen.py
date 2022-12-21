@@ -51,7 +51,7 @@ def combine_types(lty, rty):
         return Type([Ident([outsigned + str(outbits)])])
 
     elif rty.name in num_tys and lty.name in num_tys:
-        # at least one is float, return biggest flaot type
+        # at least one is float, return biggest float type
         if lty.name[0] == "f":
             lfbits = int(lty.name[1:])
         else:
@@ -62,7 +62,7 @@ def combine_types(lty, rty):
             rfbits = 0
         
         outbits = max(lfbits, rfbits)
-        return Type([ident(["f" + str(outbits)])])
+        return Type([Ident(["f" + str(outbits)])])
     else:
         raise SyntaxError(f"Cannot combine types '{lhs}' and '{rhs}'")
 
@@ -83,7 +83,13 @@ class LocalVar:
     def __init__(self, name, ty):
         self.name = name
         self.ty = ty
+        
+    def __repr__(self):
+        return f"LocalVar('{self.name}', {self.ty})"
 
+def mangle_func(name, templates):
+    get_mangle_type = lambda t: t.name + "p" * t.num_ptr
+    return "_".join([name] + [get_mangle_type(i) for i in templates.values()])
 
 class CG:
     def __init__(self, fname):
@@ -110,17 +116,30 @@ class CG:
     def get_indent(self, offset=0):
         return " " * ((self.indent + offset) * 4)
     
+    def get_actual_ret_ty(self, ast: FuncCall, locals=None):
+        sig = self.get_global(ast.name)
+        if not sig.ret_ty.name in sig.ast.template_args:
+            # return type is not dependant on a template
+            return sig.ret_ty
+        else:
+            template_name = sig.ret_ty
+            index = sig.ast.template_args.index(template_name.name)
+            # get the relevant arg expression passed in which defines the template
+            exp = ast.args[index]
+            return self.figure_out_type(exp, locals)
+
     def figure_out_type(self, ast, locals=None) -> Type:
+        print(locals)
         if locals == None:
             locals = []
         if type(ast) == IntLit:
-            # HACK: figure out proper type
+            # TODO: how????
             return Type([Ident(["u16"])])
         elif type(ast) == BinOp:
-            lty = self.figure_out_type(ast.operands[0])
+            lty = self.figure_out_type(ast.operands[0], locals)
             if ast.op == ".":
                 # HACK: assumes only one . (a.b.c is not valid)
-                sig = self.get_global(self.figure_out_type(ast.operands[0]).name)
+                sig = self.get_global(self.figure_out_type(ast.operands[0], locals).name)
                 if ast.operands[1].val in [i[0] for i in sig.fields]:
                     return [i[1] for i in sig.fields if i[0] == ast.operands[1].val][0] # hacky shit
                 else:
@@ -144,13 +163,17 @@ class CG:
         elif type(ast) == StructInit:
             return Type([Ident([self.get_global(ast.struct_name).name])])
         elif type(ast) == FuncCall:
-            return self.get_global(ast.name).ret_ty
+            return self.get_actual_ret_ty(ast, locals)
         elif type(ast) == UnOp:
+            ty = self.figure_out_type(ast.operand, locals)
             if ast.op == "&":
-                ty = self.figure_out_type(ast.operand)
                 ty.num_ptr += 1
                 return ty
-            # TODO support *
+            elif ast.op == "*":
+                ty.num_ptr -= 1
+                return ty
+            else:
+                raise NotImplementedError("Not implemented figuring out unop " + ast.op)
         else:
             raise NotImplementedError(f"Not implemented figuring out type of ast {repr(ast)}")
     
@@ -192,7 +215,6 @@ class CG:
             if expected_ty.name in func_sig.ast.template_args:
                 templates[expected_ty] = actual_ty
             else:
-                print(expected_ty.name, "not in", func_sig.ast.template_args)
                 if not can_be_coerced(actual_ty, expected_ty):
                     raise SyntaxError(f"Function '{funcname}' expects argument argument {i + 1} to be of type '{expected_ty}', but it is actually type '{actual_ty}'")
             args.append(self.expr(a))
@@ -205,10 +227,7 @@ class CG:
             self.code = code
 
         if func_sig.ret_ty.name != "void" or func_sig.ret_ty.num_ptr != 0:
-            # var_name = self.gen_var_name()
-            # self.code += func_sig.ret_ty + " " + var_name + " = " + funcname + "(" + ", ".join(args) + ");\n"
-            # return var_nam
-            return funcname + "(" + ", ".join(args) + ")"
+            return mangle_func(funcname, templates) + "(" + ", ".join(args) + ")"
         else:
             self.code += self.get_indent() + funcname + "(" + ", ".join(args) + ");\n"
         
@@ -345,13 +364,14 @@ class CG:
             if ast.val is not None:
                 self.code += " = " + expr_res
             self.code += ";\n"
-        
+        print("defining", ast.name)
         self.locals[-1].append(LocalVar(ast.name, ast.ty))
     
     def structinit(self, ast):
         return f"({ast.struct_name}){{{', '.join([self.expr(v[1]) for v in ast.init_args])}}}"
     
     def expr(self, ast):
+        print("expr", ast)
         if type(ast) == BinOp:
             return self.binexpr(ast)
         elif type(ast) == UnOp:
@@ -418,12 +438,13 @@ class CG:
         if self.code != "":
             raise RuntimeError("Expected code to be empty, but it contained '" + self.code + "'")
         if with_template_args is None:
-            with_template_args = {Type([Ident(["T"])]): Type([Ident(["i32"])])}
+            with_template_args = {}
         
         get_real_type = lambda ty: with_template_args.get(ty, ty)
         
+        func_name = mangle_func(sig.name, with_template_args)        
         if sig.ast.forward_decl or always_forward:
-            self.forward_defs.append(f"{self.get_type(get_real_type(sig.ret_ty))} {sig.name}({', '.join([self.get_type(get_real_type(ty)) for ty in sig.args])});")
+            self.forward_defs.append(f"{self.get_type(get_real_type(sig.ret_ty))} {func_name}({', '.join([self.get_type(get_real_type(ty)) for ty in sig.args])});")
             return
         
         self.locals.append([])
@@ -447,7 +468,7 @@ class CG:
         
         sig.ret_ty = ret_ty
 
-        self.code += f"{self.get_type(sig.ret_ty)} {sig.name}({', '.join([self.get_type(get_real_type(ty)) + ' ' + str(name) for name, ty in sig.ast.args])}) {{\n"
+        self.code += f"{self.get_type(sig.ret_ty)} {func_name}({', '.join([self.get_type(get_real_type(ty)) + ' ' + str(name) for name, ty in sig.ast.args])}) {{\n"
         
         self.indent += 1
         for smt in sig.ast.body.smts:
@@ -485,10 +506,7 @@ class CG:
             raise ImportError(f"Unresolved import: '{smt.fname}'")
         if full_path in self.already_imported:
             # already done, bail
-            print("debug: ignoring import", full_path)
             return
-        else:
-            print(full_path, "not in", self.already_imported)
 
         self.already_imported.append(full_path)
         

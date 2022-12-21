@@ -27,5 +27,5 @@ File: struct {
 //     r->len = fsize;
 // }
 
-putd: fn(a: i64);
-putstr: fn(s: String*);
+putd: proc(a: i64);
+putstr: proc(s: String*);

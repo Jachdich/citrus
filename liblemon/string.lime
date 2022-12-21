@@ -14,8 +14,11 @@ String: struct {
 	data: char*;
 }
 
-String::from_c_str: fn(data: char*) 			   = String { length: strlen(data), data: data };
-String::from_pointer: fn(data: char*, length: u32) = String { length: length,       data: data };
+String::from_c_str: fn(data: char*) -> String =
+	String { length: strlen(data), data: data };
+
+String::from_pointer: fn(data: char*, length: u32) -> String = 
+	String { length: length,       data: data };
 
 // make_seg: fn(data: char*, seg_len: u32) -> String = {
 // 	if seg_len > 0 {
