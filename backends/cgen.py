@@ -6,7 +6,19 @@ from parser import *
 
 INT_TYPES = ["i8", "i16", "i32", "i64", "u8", "u16", "u32", "u64"]
 
-        
+# need some info about the return type of an expression (be that func sig or a Type)
+
+# TODO for Vec:
+# struct templates
+# [] operator
+# sizeof() (& macros?)
+# operator overloading
+# calling associated functions
+
+# TODO hacky things to fix:
+# multiple .s
+# struct init order
+
 def can_be_coerced(from_, to):
     # same type always able to convert
     if from_ == to: return True
@@ -129,7 +141,6 @@ class CG:
             return self.figure_out_type(exp, locals)
 
     def figure_out_type(self, ast, locals=None) -> Type:
-        print(locals)
         if locals == None:
             locals = []
         if type(ast) == IntLit:
@@ -184,21 +195,22 @@ class CG:
         self.var += 1
         return "__var" + str(self.var)
         
-    def get_global(self, name):
+    def get_global(self, name, *, no_except=False):
         for sig in self.globals:
             if sig.name == name:
                 return sig
-        raise SyntaxError(f"Undefined global '{name}'")
+        if not no_except:
+            raise SyntaxError(f"Undefined global '{name}'")
 
-    def get_local(self, name):
+    def get_local(self, name, *, no_except=False):
         for var in self.locals[-1]:
             if var.name == name:
                 return var
-        
-        raise SyntaxError(f"Undefined variable '{name}'")
+        if not no_except:
+            raise SyntaxError(f"Undefined variable '{name}'")
     
-    def funccall(self, ast):
-        funcname = ast.name
+    def funccall(self, ast: FuncCall):
+        func_expr = self.expr(ast.fn_expr)
         func_sig = self.get_global(funcname)
         if func_sig is None:
             raise SyntaxError(f"Unknown function '{funcname}'")
@@ -275,11 +287,15 @@ class CG:
         return str(ast)
 
     def ident(self, ast):
-        var = self.get_local(ast.val)
-        if var is None:
-            raise SyntaxError("Undefined symbol '" + ast.val + "'")
+        var = self.get_local(ast.val, no_except=True)
+        if var is not None:
+            return var.name
         
-        return var.name
+        var = self.get_global(ast.val, no_except=True)
+        if var is not None:
+            return var.name
+            
+        raise SyntaxError("Undefined symbol '" + ast.val + "'")
     
     def var_assign(self, ast):
         var = self.get_local(ast.lval)
@@ -364,14 +380,13 @@ class CG:
             if ast.val is not None:
                 self.code += " = " + expr_res
             self.code += ";\n"
-        print("defining", ast.name)
         self.locals[-1].append(LocalVar(ast.name, ast.ty))
     
     def structinit(self, ast):
         return f"({ast.struct_name}){{{', '.join([self.expr(v[1]) for v in ast.init_args])}}}"
     
     def expr(self, ast):
-        print("expr", ast)
+        # print("expr", ast)
         if type(ast) == BinOp:
             return self.binexpr(ast)
         elif type(ast) == UnOp:
@@ -393,7 +408,7 @@ class CG:
             exit(1)
     
     def smt(self, ast):
-        print("smt", ast)
+        # print("smt", ast)
         if type(ast) == VarDef:
             self.vardef(ast)
         elif type(ast) == IfSmt:
@@ -403,7 +418,7 @@ class CG:
         else:
             res = self.expr(ast)
             if res is not None:
-                self.code += res + ";\n"
+                self.code += self.get_indent() + res + ";\n"
     
     def gen_fn_sig(self, ast):
         ret_ty = ast.ret_ty

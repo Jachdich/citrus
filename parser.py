@@ -60,13 +60,13 @@ class FnDef:
             self.name = tokens[0][1].val
             self.assoc_struct = tokens[0][0].val
         
-        self.template_args = [i.val for i in tokens[1]]
+        self.template_args = [i.val for i in tokens[2]]
         
-        self.args = list(zip([n.val for n in tokens[2][0][::2]], tokens[2][0][1::2])) # (name, type) pairs
-        self.ret_ty = tokens[2][1] if len(tokens[2]) > 1 else None
-        if len(tokens) == 4:
+        self.args = list(zip([n.val for n in tokens[3][0][::2]], tokens[3][0][1::2])) # (name, type) pairs
+        self.ret_ty = tokens[3][1] if len(tokens[3]) > 1 else None
+        if len(tokens) == 5:
             self.forward_decl = False
-            self.body = tokens[3]
+            self.body = tokens[4]
         else:
             self.forward_decl = True
             self.body = None
@@ -166,14 +166,14 @@ class CompoundExpr:
 
 class FuncCall:
     def __init__(self, tokens):
-        self.name = tokens[0].val
+        self.fn_expr = tokens[0]
         if len(tokens) > 1:
             self.args = tokens[1:]
         else:
             self.args = []
             
     def __repr__(self):
-        return f"FuncCall({self.name}({self.args}))"
+        return f"FuncCall({self.fn_expr}({self.args}))"
 
 class Type:
     def __init__(self, tokens):
@@ -241,10 +241,8 @@ decimal = Combine(Optional("-") + Word("0123456789") + Literal(".") + Word("0123
 
 number = decimal | integer.set_parse_action(IntLit)
 
-addexpr = Forward()
-mulexpr = Forward()
-cmpexpr = Forward()
 expr = Forward()
+expr_nofn = Forward()
 smt = Forward()
 type_ = Forward()
 
@@ -261,16 +259,23 @@ compoundexpr = (OBRACE + ZeroOrMore(smt) + expr + CBRACE).set_parse_action(Compo
 
 importsmt = (Literal("import") + QuotedString(quoteChar='"')).set_parse_action(ImportSmt)
 
-# mulexpr << (Group(term +    (Literal("*") | Literal("/") | Literal("%")) + expr).set_results_name("binexpr") | term)
-# addexpr << (Group(mulexpr + (Literal("+") | Literal("-")) + expr).set_results_name("binexpr") | mulexpr)
-# cmpexpr << (Group(addexpr + (Literal(">=") | Literal("<=") | Literal("==") | Literal(">") | Literal("<")) + expr).set_results_name("binexpr") | addexpr)
-
 structinit = (ident + OBRACE + delimitedList(ident + Suppress(":") + expr, ",") + CBRACE).set_parse_action(StructInit)
 
-funccall = (ident + OPAREN + ZeroOrMore(expr + COMMA) + Optional(expr) + CPAREN).set_parse_action(FuncCall)
+funccall = (expr_nofn + OPAREN + ZeroOrMore(expr + COMMA) + Optional(expr) + CPAREN).set_parse_action(FuncCall)
 ifexpr = (Suppress("if") + expr + compoundexpr + Suppress("else") + compoundexpr).set_parse_action(IfExpr)
 nonmathexpr = (ifexpr | funccall | structinit | term | ident)
+nonmathexpr_nofn = (ifexpr | structinit | term | ident)
 mathexpr = infix_notation(nonmathexpr,
+    [
+        (".", 2, opAssoc.LEFT, BinOp),
+        (oneOf("* &"), 1, opAssoc.LEFT, UnOp),
+        (oneOf("* / %"), 2, opAssoc.LEFT, BinOp),
+        (oneOf("+ -"), 2, opAssoc.LEFT, BinOp),
+        (oneOf(">= <= == > < !="), 2, opAssoc.LEFT, BinOp),
+        (oneOf("= += -= *= /="), 2, opAssoc.LEFT, BinOp),
+    ]
+)
+mathexpr_nofn = infix_notation(nonmathexpr_nofn,
     [
         (".", 2, opAssoc.LEFT, BinOp),
         (oneOf("* &"), 1, opAssoc.LEFT, UnOp),
@@ -284,9 +289,9 @@ mathexpr = infix_notation(nonmathexpr,
 eqfunc       =  (EQ + expr + SEMI).set_parse_action(CompoundExpr)
 compoundfunc =  EQ + (compoundexpr | compoundsmt) + Optional(SEMI)
 
-funcdef = (Group(ident + Optional(Suppress("::") + ident)) + Suppress(":") + (Suppress("fn") | Suppress("proc")) +
+funcdef = (Group(ident + Optional(Suppress("::") + ident)) + Suppress(":") + (Literal("fn") | Literal("proc")) +
           Optional(template_list, []) +
-          OPAREN + Group(arg_list + CPAREN + Optional(Suppress("->") + type_)) +
+          Group(Optional(OPAREN + arg_list + CPAREN, []) + Optional(Suppress("->") + type_)) +
           (compoundfunc | eqfunc | SEMI)).set_parse_action(FnDef)
 
 
@@ -300,6 +305,7 @@ whilesmt = (Suppress("while") + expr + compoundsmt).set_parse_action(WhileSmt)
 
 ifsmt  = (Suppress("if") + expr + compoundsmt + Optional(Suppress("else") + compoundsmt)).set_parse_action(IfSmt)
 expr << (compoundexpr | mathexpr | nonmathexpr)
+expr_nofn << (compoundexpr | mathexpr_nofn | nonmathexpr_nofn)
 
 smt << (whilesmt | vardef | ifsmt | (expr + Suppress(";")))
 prog = ZeroOrMore(importsmt | funcdef | structdef)

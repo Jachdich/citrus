@@ -20,20 +20,24 @@ Token: struct {
     col: u32;
 }
 
-printtoken: proc(tok: Token*) = {
-    putstr(tok.text&);
+Token::print: proc(self: Token*) = {
+    putstr(self.text&);
 }
 
-test_stuff: proc() = {
+test_stuff: proc = {
     let data = malloc(10);
     memset(data, 65, 10);
     let lol = String { length: 10, data: data };
+    
     let tok = Token { type: 0, text: lol, indent: 1, line: 69, col: 420 };
-    printtoken(tok&);
+    // tok.print();
+    let tok_ptr = tok&;
+    tok_ptr.print();
+    
     free(lol.data);
 }
 
-main: fn() -> i32 = {
+main: proc -> i32 = {
     let a: i64 = 16;
     let b: u32 = 8;
     let c = some_thing(a);

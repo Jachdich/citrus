@@ -4,7 +4,8 @@ SOURCES := $(shell find src -maxdepth 1 -name "*.lime" -type f)
 OBJECTS := $(patsubst src/%,build/%,$(SOURCES:.lime=.o))
 run: citrus
 	./citrus
-	
+
+.SECONDARY:
 # build/%.s: src/%.lime
 #	$(PYTHON) main.py -b x86asm -o $@ -g $^
 

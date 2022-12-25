@@ -6,10 +6,13 @@ struct Vec<T> {
 	data: T*;
 }
 
-Vec<T>::new: fn() -> Vec<T> = Vec<T> { len: 0, capacity: 1, data: malloc(1 * sizeof(T)) };
-Vec<T>::from_pointer: fn(pointer: T*, length: u64) -> Vec<T> = Vec<T> { len: length, capacity: length, data: pointer };
+Vec<T>::new: fn() -> Vec<T> =
+	Vec<T> { len: 0, capacity: 1, data: malloc(1 * sizeof(T)) };
 
-Vec<T>::push: fn(self: Vec<T>*, elem: T) = {
+Vec<T>::from_pointer: fn(pointer: T*, length: u64) -> Vec<T> =
+	Vec<T> { len: length, capacity: length, data: pointer };
+
+Vec<T>::push: fn<T>(self: Vec<T>*, elem: T) = {
 	if self.len >= self.capacity {
 		self.data = realloc(self.data, (self.capacity *= 2) * sizeof(T));
 	}
