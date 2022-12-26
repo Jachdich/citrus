@@ -24,15 +24,20 @@ Token::print: proc(self: Token*) = {
     putstr(self.text&);
 }
 
+String::print: proc(self: String*) = {
+    putstr(self);
+}
+
 test_stuff: proc = {
     let data = malloc(10);
     memset(data, 65, 10);
     let lol = String { length: 10, data: data };
     
     let tok = Token { type: 0, text: lol, indent: 1, line: 69, col: 420 };
-    // tok.print();
+    tok.print();
     let tok_ptr = tok&;
     tok_ptr.print();
+    tok_ptr.text.print();
     
     free(lol.data);
 }

@@ -6,14 +6,14 @@ from parser import *
 
 INT_TYPES = ["i8", "i16", "i32", "i64", "u8", "u16", "u32", "u64"]
 
-# need some info about the return type of an expression (be that func sig or a Type)
+# TODO
+# a.b() doesn't work with templates
 
 # TODO for Vec:
 # struct templates
 # [] operator
 # sizeof() (& macros?)
 # operator overloading
-# calling associated functions
 
 # TODO hacky things to fix:
 # multiple .s
@@ -79,12 +79,13 @@ def combine_types(lty, rty):
         raise SyntaxError(f"Cannot combine types '{lhs}' and '{rhs}'")
 
 class FuncSig:
-    def __init__(self, name, args, ret_ty, ast, generic=False):
+    def __init__(self, name, args, ret_ty, ast, assoc=False, generic=False):
         self.name = name
         self.args = args
         self.ret_ty = ret_ty
         self.is_generic = generic
         self.ast = ast
+        self.is_assoc_fn = assoc
         
 class StructSig:
     def __init__(self, name, fields):
@@ -119,7 +120,7 @@ class CG:
     def is_valid_type(self, ty):
         if ty.name in ["i32", "i64", "i16", "i8", "u64", "u32", "u16", "u8", "f64", "f32", "char", "void"]:
             return True
-        return self.get_global(ty.name) != None
+        return self.get_global(ty.name, no_except=True) != None
 
     def check_valid_type(self, ty):
         if not self.is_valid_type(ty):
@@ -129,7 +130,8 @@ class CG:
         return " " * ((self.indent + offset) * 4)
     
     def get_actual_ret_ty(self, ast: FuncCall, locals=None):
-        sig = self.get_global(ast.name)
+        name, _ = self.get_fn_name(ast)
+        sig = self.get_global(name)
         if not sig.ret_ty.name in sig.ast.template_args:
             # return type is not dependant on a template
             return sig.ret_ty
@@ -177,12 +179,13 @@ class CG:
             return self.get_actual_ret_ty(ast, locals)
         elif type(ast) == UnOp:
             ty = self.figure_out_type(ast.operand, locals)
+            num_ptr = ty.num_ptr
             if ast.op == "&":
-                ty.num_ptr += 1
-                return ty
+                num_ptr += 1
+                return Type(None, name=ty.name, num_ptr=num_ptr)
             elif ast.op == "*":
-                ty.num_ptr -= 1
-                return ty
+                num_ptr -= 1
+                return Type(None, name=ty.name, num_ptr=num_ptr)
             else:
                 raise NotImplementedError("Not implemented figuring out unop " + ast.op)
         else:
@@ -209,15 +212,36 @@ class CG:
         if not no_except:
             raise SyntaxError(f"Undefined variable '{name}'")
     
-    def funccall(self, ast: FuncCall):
-        func_expr = self.expr(ast.fn_expr)
-        func_sig = self.get_global(funcname)
-        if func_sig is None:
-            raise SyntaxError(f"Unknown function '{funcname}'")
+    def get_fn_name(self, ast: FuncCall):
+        if type(ast.fn_expr) == Ident:
+            return ast.fn_expr.val, None
+        elif type(ast.fn_expr) == BinOp and ast.fn_expr.op == ".":
+            if len(ast.fn_expr.operands) == 2:
+                # only 2 operands, can just eval lhs
+                lhs, rhs = ast.fn_expr.operands
+            else:
+                rhs = ast.fn_expr.operands.pop()
+                lhs = ast.fn_expr
+            assert type(rhs) == Ident, "Wtf, rhs is " + repr(rhs)
+            l_ty = self.figure_out_type(lhs)
+            return l_ty.name + "_" + rhs.val, lhs
+        else:
+            raise RuntimeError("Wtf, type of ast.fn_expr is", repr(ast.fn_expr))
         
+        return func_sig, func_name
+    
+    def funccall(self, ast: FuncCall):
+        func_name, self_expr = self.get_fn_name(ast)
+        func_sig = self.get_global(func_name)
         num_args = len(ast.args)
+        if func_sig.is_assoc_fn:
+            num_args += 1
+            if self.figure_out_type(self_expr).num_ptr != 1:
+                # automatically make self into a pointer
+                self_expr = UnOp([[self_expr, "&"]])
+            ast.args = [self_expr] + ast.args
         if num_args != len(func_sig.args):
-            raise SyntaxError(f"Function '{funcname}' expects {len(func_sig.args)} args but {num_args} were given")
+            raise SyntaxError(f"Function '{func_name}' expects {len(func_sig.args)} args but {num_args} were given")
         
         args = []
         templates = {}
@@ -228,7 +252,7 @@ class CG:
                 templates[expected_ty] = actual_ty
             else:
                 if not can_be_coerced(actual_ty, expected_ty):
-                    raise SyntaxError(f"Function '{funcname}' expects argument argument {i + 1} to be of type '{expected_ty}', but it is actually type '{actual_ty}'")
+                    raise SyntaxError(f"Function '{func_name}' expects argument argument {i + 1} to be of type '{expected_ty}', but it is actually type '{actual_ty}'")
             args.append(self.expr(a))
         
         if func_sig.is_generic:
@@ -239,9 +263,9 @@ class CG:
             self.code = code
 
         if func_sig.ret_ty.name != "void" or func_sig.ret_ty.num_ptr != 0:
-            return mangle_func(funcname, templates) + "(" + ", ".join(args) + ")"
+            return mangle_func(func_name, templates) + "(" + ", ".join(args) + ")"
         else:
-            self.code += self.get_indent() + funcname + "(" + ", ".join(args) + ");\n"
+            self.code += self.get_indent() + func_name + "(" + ", ".join(args) + ");\n"
         
     def binexpr(self, ast):
         op = ast.op
@@ -367,7 +391,6 @@ class CG:
         if ast.ty is None:
             if ast.val is None:
                 raise SyntaxError("Black magic fuckery is not supported yet")
-            
             ast.ty = self.figure_out_type(ast.val)
         
         if ast.ty.fn_ptr:
@@ -386,7 +409,6 @@ class CG:
         return f"({ast.struct_name}){{{', '.join([self.expr(v[1]) for v in ast.init_args])}}}"
     
     def expr(self, ast):
-        # print("expr", ast)
         if type(ast) == BinOp:
             return self.binexpr(ast)
         elif type(ast) == UnOp:
@@ -431,7 +453,7 @@ class CG:
             generic = False
             self.check_valid_type(ret_ty)
         args = [a[1] for a in ast.args] # just types
-        sig = FuncSig(ast.name, args, ret_ty, ast, generic)
+        sig = FuncSig(ast.name, args, ret_ty, ast, ast.assoc_struct is not None, generic)
         return sig
    
     def add_global(self, glob):

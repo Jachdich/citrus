@@ -39,7 +39,7 @@ class UnOp:
         self.op = tokens[0][1]
     
     def __repr__(self):
-        return f"UnOp({self.operand}{self.op})"
+        return f"UnOp({repr(self.operand)}{self.op})"
 
 class ImportSmt:
     def __init__(self, tokens):
@@ -176,27 +176,22 @@ class FuncCall:
         return f"FuncCall({self.fn_expr}({self.args}))"
 
 class Type:
-    def __init__(self, tokens):
-        if tokens[0] == "fn":
-            self.fn_ptr = True
-            self.name = "fn"
-            self.args = list(zip([n.val for n in tokens[1][::2]], tokens[1][1::2])) # (name, type) pairs
-            if len(tokens) > 2:
-                self.ty = tokens[2]
-            else:
-                self.ty = None
-                
+    def __init__(self, tokens, *, name=None, num_ptr=None):
+        self.fn_ptr = False
+        if name is not None and num_ptr is not None:
+            self.name = name
+            self.num_ptr = num_ptr
+            return
+
+        if type(tokens[0]) == str and tokens[0] == "*":
+            self.name = "void"
+            self.num_ptr = len(tokens)
         else:
-            self.fn_ptr = False
-            if type(tokens[0]) == str and tokens[0] == "*":
-                self.name = "void"
-                self.num_ptr = len(tokens)
+            self.name = tokens[0].val
+            if len(tokens) > 1:
+                self.num_ptr = len([n for n in tokens[1:] if n == "*"])
             else:
-                self.name = tokens[0].val
-                if len(tokens) > 1:
-                    self.num_ptr = len([n for n in tokens[1:] if n == "*"])
-                else:
-                    self.num_ptr = 0
+                self.num_ptr = 0
 
     def __repr__(self):
         if self.fn_ptr:
@@ -248,9 +243,8 @@ type_ = Forward()
 
 template_list = Group(Suppress("<") + delimitedList(ident) + Suppress(">"))
 arg_list = Group(ZeroOrMore(ident + COLON + type_ + COMMA) + Optional(ident + COLON + type_))
-type_ << ((Literal("fn") + OPAREN + arg_list + CPAREN + Optional(Suppress("->") + type_)) |
-          (ident + Optional(template_list, []) + ZeroOrMore("*")) |
-          Literal("*")).set_parse_action(Type)
+type_ << ((ident + Optional(template_list, []) + ZeroOrMore("*")) |
+          OneOrMore("*")).set_parse_action(Type)
 
 # term = (OPAREN + expr + CPAREN) | number | Group(ident).set_results_name("ident")
 term = number | ident
