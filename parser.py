@@ -1,7 +1,8 @@
 
 from pyparsing import *
 from string import printable
-ParserElement.enablePackrat()
+# ParserElement.enablePackrat()
+# ParserElement.enableLeftRecursion()
 class IntLit:
     def __init__(self, tokens):
         self.val = int(tokens[0])
@@ -227,22 +228,39 @@ class StructInit:
 
     def __repr__(self):
         return f"StructInit({self.struct_name} {{{', '.join([n + ': ' + repr(t) for n, t in self.init_args])}}})"
+
 comment = Literal("//") + restOfLine
 
 OPAREN, CPAREN, COMMA, COLON, SEMI, EQ, OBRACE, CBRACE = map(Suppress, "(),:;={}")
-ident = Word(alphas + "_", alphanums + "_").set_parse_action(Ident)
-integer = Combine(Optional("-") + Word("0123456789"))
-decimal = Combine(Optional("-") + Word("0123456789") + Literal(".") + Word("0123456789"))
-
-number = decimal | integer.set_parse_action(IntLit)
 
 expr = Forward()
-expr_nofn = Forward()
 smt = Forward()
 type_ = Forward()
+postfix = Forward()
+mul_expr = Forward()
+add_expr = Forward()
+eq_expr = Forward()
+assign_expr = Forward()
+
+ident = Word(alphas + "_", alphanums + "_").set_parse_action(Ident)
+integer = Combine(Optional("-") + Word("0123456789")).set_parse_action(IntLit)
+decimal = Combine(Optional("-") + Word("0123456789") + Literal(".") + Word("0123456789"))
+
+number = decimal | integer
+
+arg_expr_list = delimitedList(expr, delim=",")
+
+primary = ident | number | OPAREN + expr + CPAREN
+postfix = primary\
+          | postfix + OPAREN + CPAREN\
+          | postfix + OPAREN + arg_expr_list + CPAREN\
+          | postfix + Literal("*")\
+          | postfix + Literal("&")
+
+mul_expr <<= postfix | mul_expr + Literal("*") + postfix | mul
 
 template_list = Group(Suppress("<") + delimitedList(ident) + Suppress(">"))
-arg_list = Group(ZeroOrMore(ident + COLON + type_ + COMMA) + Optional(ident + COLON + type_))
+arg_def_list = Group(ZeroOrMore(ident + COLON + type_ + COMMA) + Optional(ident + COLON + type_))
 type_ << ((ident + Optional(template_list, []) + ZeroOrMore("*")) |
           OneOrMore("*")).set_parse_action(Type)
 
@@ -255,23 +273,12 @@ importsmt = (Literal("import") + QuotedString(quoteChar='"')).set_parse_action(I
 
 structinit = (ident + OBRACE + delimitedList(ident + Suppress(":") + expr, ",") + CBRACE).set_parse_action(StructInit)
 
-funccall = (expr_nofn + OPAREN + ZeroOrMore(expr + COMMA) + Optional(expr) + CPAREN).set_parse_action(FuncCall)
+subscript = (expr + Suppress("[") + expr + Suppress("]"))
 ifexpr = (Suppress("if") + expr + compoundexpr + Suppress("else") + compoundexpr).set_parse_action(IfExpr)
-nonmathexpr = (ifexpr | funccall | structinit | term | ident)
-nonmathexpr_nofn = (ifexpr | structinit | term | ident)
+nonmathexpr = (subscript | ifexpr | funccall | structinit | term | ident)
 mathexpr = infix_notation(nonmathexpr,
     [
-        (".", 2, opAssoc.LEFT, BinOp),
-        (oneOf("* &"), 1, opAssoc.LEFT, UnOp),
-        (oneOf("* / %"), 2, opAssoc.LEFT, BinOp),
-        (oneOf("+ -"), 2, opAssoc.LEFT, BinOp),
-        (oneOf(">= <= == > < !="), 2, opAssoc.LEFT, BinOp),
-        (oneOf("= += -= *= /="), 2, opAssoc.LEFT, BinOp),
-    ]
-)
-mathexpr_nofn = infix_notation(nonmathexpr_nofn,
-    [
-        (".", 2, opAssoc.LEFT, BinOp),
+        (oneOf(". ::"), 2, opAssoc.LEFT, BinOp),
         (oneOf("* &"), 1, opAssoc.LEFT, UnOp),
         (oneOf("* / %"), 2, opAssoc.LEFT, BinOp),
         (oneOf("+ -"), 2, opAssoc.LEFT, BinOp),
@@ -285,7 +292,7 @@ compoundfunc =  EQ + (compoundexpr | compoundsmt) + Optional(SEMI)
 
 funcdef = (Group(ident + Optional(Suppress("::") + ident)) + Suppress(":") + (Literal("fn") | Literal("proc")) +
           Optional(template_list, []) +
-          Group(Optional(OPAREN + arg_list + CPAREN, []) + Optional(Suppress("->") + type_)) +
+          Group(Optional(OPAREN + arg_def_list + CPAREN, []) + Optional(Suppress("->") + type_)) +
           (compoundfunc | eqfunc | SEMI)).set_parse_action(FnDef)
 
 
@@ -299,7 +306,6 @@ whilesmt = (Suppress("while") + expr + compoundsmt).set_parse_action(WhileSmt)
 
 ifsmt  = (Suppress("if") + expr + compoundsmt + Optional(Suppress("else") + compoundsmt)).set_parse_action(IfSmt)
 expr << (compoundexpr | mathexpr | nonmathexpr)
-expr_nofn << (compoundexpr | mathexpr_nofn | nonmathexpr_nofn)
 
 smt << (whilesmt | vardef | ifsmt | (expr + Suppress(";")))
 prog = ZeroOrMore(importsmt | funcdef | structdef)

@@ -88,9 +88,10 @@ class FuncSig:
         self.is_assoc_fn = assoc
         
 class StructSig:
-    def __init__(self, name, fields):
+    def __init__(self, name, fields, generic=False):
         self.name = name
         self.fields = fields
+        self.is_generic = generic
 
 class LocalVar:
     def __init__(self, name, ty):
@@ -172,7 +173,16 @@ class CG:
         elif type(ast) == Ident:
             if ast.val in [l.name for l in locals]:
                 return next(filter(lambda l: l.name == ast.val, locals)).ty
-            return self.get_local(ast.val).ty
+            
+            loc = self.get_local(ast.val, no_except=True)
+            if loc is not None:
+                return loc.ty
+            
+            glob = self.get_global(ast.val, no_except=True)
+            if glob is not None:
+                return glob
+            raise SyntaxError("Undefined symbol '" + ast.val + "'")
+            
         elif type(ast) == StructInit:
             return Type([Ident([self.get_global(ast.struct_name).name])])
         elif type(ast) == FuncCall:
@@ -215,7 +225,7 @@ class CG:
     def get_fn_name(self, ast: FuncCall):
         if type(ast.fn_expr) == Ident:
             return ast.fn_expr.val, None
-        elif type(ast.fn_expr) == BinOp and ast.fn_expr.op == ".":
+        elif type(ast.fn_expr) == BinOp and ast.fn_expr.op in (".", "::"):
             if len(ast.fn_expr.operands) == 2:
                 # only 2 operands, can just eval lhs
                 lhs, rhs = ast.fn_expr.operands
@@ -228,13 +238,11 @@ class CG:
         else:
             raise RuntimeError("Wtf, type of ast.fn_expr is", repr(ast.fn_expr))
         
-        return func_sig, func_name
-    
     def funccall(self, ast: FuncCall):
         func_name, self_expr = self.get_fn_name(ast)
         func_sig = self.get_global(func_name)
         num_args = len(ast.args)
-        if func_sig.is_assoc_fn:
+        if func_sig.is_assoc_fn and ast.fn_expr.op == ".":
             num_args += 1
             if self.figure_out_type(self_expr).num_ptr != 1:
                 # automatically make self into a pointer
@@ -406,7 +414,16 @@ class CG:
         self.locals[-1].append(LocalVar(ast.name, ast.ty))
     
     def structinit(self, ast):
-        return f"({ast.struct_name}){{{', '.join([self.expr(v[1]) for v in ast.init_args])}}}"
+        struct_sig = self.get_global(ast.struct_name)
+        arg_list = []
+        for name, ty in struct_sig.fields:
+            for n, e in ast.init_args:
+                if n == name:
+                    if not can_be_coerced(self.figure_out_type(e), ty):
+                        raise SyntaxError(f"Expected type '{ty}' but got '{self.figure_out_type(e)}' instead for field '{name}' of struct '{ast.struct_name}'")
+                    arg = self.expr(e)
+                    arg_list.append(arg)
+        return f"({ast.struct_name}){{{', '.join(arg_list)}}}"
     
     def expr(self, ast):
         if type(ast) == BinOp:
