@@ -4,11 +4,11 @@ import "liblemon/string.lime"
 import "liblemon/mem.lime"
 
 Reader: struct {
-	data: String*,
+	data: String,
 	pos: u32,
 }
 
-Reader::from_string: fn(s: String*) -> Reader =
+Reader::from_string: fn(s: String -> Reader =
 	Reader { data: s, pos: 0 };
 
 Reader::consume: fn(self: Reader*) -> char = self.data[self.pos++];

@@ -2,7 +2,7 @@
 from pyparsing import *
 from string import printable
 # ParserElement.enablePackrat()
-# ParserElement.enableLeftRecursion()
+ParserElement.enableLeftRecursion()
 class IntLit:
     def __init__(self, tokens):
         self.val = int(tokens[0])
@@ -231,90 +231,113 @@ class StructInit:
 
 comment = Literal("//") + restOfLine
 
+
+# expr = Forward()
+# smt = Forward()
+# type_ = Forward()
+# postfix = Forward()
+# mul_expr = Forward()
+# add_expr = Forward()
+# eq_expr = Forward()
+# assign_expr = Forward()
+
+# OPAREN, CPAREN, COMMA, COLON, SEMI, EQ, OBRACE, CBRACE = map(Suppress, "(),:;={}")
+# ident = Word(alphas + "_", alphanums + "_").set_parse_action(Ident)
+# integer = Combine(Optional("-") + Word("0123456789")).set_parse_action(IntLit)
+# decimal = Combine(Optional("-") + Word("0123456789") + Literal(".") + Word("0123456789"))
+
+# number = decimal | integer
+
+# arg_expr_list = delimitedList(expr, delim=",")
+
+# primary = ident | number | OPAREN + expr + CPAREN
+# postfix = primary\
+#           | postfix + OPAREN + CPAREN\
+#           | postfix + OPAREN + arg_expr_list + CPAREN\
+#           | postfix + Literal("*")\
+#           | postfix + Literal("&")
+
+# mul_expr <<= postfix | mul_expr + Literal("*") + postfix | mul_expr
+
+# template_list = Group(Suppress("<") + delimitedList(ident) + Suppress(">"))
+# arg_def_list = Group(ZeroOrMore(ident + COLON + type_ + COMMA) + Optional(ident + COLON + type_))
+# type_ << ((ident + Optional(template_list, []) + ZeroOrMore("*")) |
+#           OneOrMore("*")).set_parse_action(Type)
+
+# # term = (OPAREN + expr + CPAREN) | number | Group(ident).set_results_name("ident")
+# term = number | ident
+# compoundsmt = (OBRACE + ZeroOrMore(smt) + CBRACE).set_parse_action(CompoundSmt)
+# compoundexpr = (OBRACE + ZeroOrMore(smt) + expr + CBRACE).set_parse_action(CompoundExpr)
+
+# importsmt = (Literal("import") + QuotedString(quoteChar='"')).set_parse_action(ImportSmt)
+
+# structinit = (ident + OBRACE + delimitedList(ident + Suppress(":") + expr, ",") + CBRACE).set_parse_action(StructInit)
+
+# subscript = (expr + Suppress("[") + expr + Suppress("]"))
+# ifexpr = (Suppress("if") + expr + compoundexpr + Suppress("else") + compoundexpr).set_parse_action(IfExpr)
+# funccall = (ident + ZeroOrMore(Literal("::") | Literal(".") + ident)) + OPAREN + ZeroOrMore(expr + Suppress(",")) + CPAREN
+# nonmathexpr = (subscript | ifexpr | funccall | structinit | term | ident)
+# mathexpr = infix_notation(nonmathexpr,
+#     [
+#         (oneOf(". ::"), 2, opAssoc.LEFT, BinOp),
+#         (oneOf("* &"), 1, opAssoc.LEFT, UnOp),
+#         (oneOf("* / %"), 2, opAssoc.LEFT, BinOp),
+#         (oneOf("+ -"), 2, opAssoc.LEFT, BinOp),
+#         (oneOf(">= <= == > < !="), 2, opAssoc.LEFT, BinOp),
+#         (oneOf("= += -= *= /="), 2, opAssoc.LEFT, BinOp),
+#     ]
+# )
+
+# eqfunc       =  (EQ + expr + SEMI).set_parse_action(CompoundExpr)
+# compoundfunc =  EQ + (compoundexpr | compoundsmt) + Optional(SEMI)
+
+# funcdef = (Group(ident + Optional(Suppress("::") + ident)) + Suppress(":") + (Literal("fn") | Literal("proc")) +
+#           Optional(template_list, []) +
+#           Group(Optional(OPAREN + arg_def_list + CPAREN, []) + Optional(Suppress("->") + type_)) +
+#           (compoundfunc | eqfunc | SEMI)).set_parse_action(FnDef)
+
+
+# structdef = (ident + Suppress(":") + Suppress("struct") + 
+#             Optional(template_list, []) + OBRACE +
+#             ZeroOrMore(ident + Suppress(":") + type_ + SEMI) + CBRACE).set_parse_action(StructDef)
+
+# vardef = Group(Suppress("let") + ident + Optional(COLON + type_) + Optional(EQ + expr) + SEMI).set_parse_action(VarDef)
+
+# whilesmt = (Suppress("while") + expr + compoundsmt).set_parse_action(WhileSmt)
+
+# ifsmt  = (Suppress("if") + expr + compoundsmt + Optional(Suppress("else") + compoundsmt)).set_parse_action(IfSmt)
+# expr << (compoundexpr | mathexpr | nonmathexpr)
+
+# smt << (whilesmt | vardef | ifsmt | (expr + Suppress(";")))
+# prog = ZeroOrMore(importsmt | funcdef | structdef)
+# prog.ignore(comment)
+
+# def parse(text):
+#     try:
+#         return prog.parse_string(text, parse_all=True)
+#     except ParseException as err:
+#         print(err.explain())
+#         exit(1)
+
+
+
 OPAREN, CPAREN, COMMA, COLON, SEMI, EQ, OBRACE, CBRACE = map(Suppress, "(),:;={}")
-
-expr = Forward()
-smt = Forward()
-type_ = Forward()
-postfix = Forward()
-mul_expr = Forward()
-add_expr = Forward()
-eq_expr = Forward()
-assign_expr = Forward()
-
 ident = Word(alphas + "_", alphanums + "_").set_parse_action(Ident)
 integer = Combine(Optional("-") + Word("0123456789")).set_parse_action(IntLit)
 decimal = Combine(Optional("-") + Word("0123456789") + Literal(".") + Word("0123456789"))
 
-number = decimal | integer
+constant = decimal | integer
 
-arg_expr_list = delimitedList(expr, delim=",")
+expr = Forward()
+postfix_expr = Forward()
 
-primary = ident | number | OPAREN + expr + CPAREN
-postfix = primary\
-          | postfix + OPAREN + CPAREN\
-          | postfix + OPAREN + arg_expr_list + CPAREN\
-          | postfix + Literal("*")\
-          | postfix + Literal("&")
+arg_expr_list = Forward()
+arg_expr_list <<= expr | arg_expr_list + COMMA + expr
 
-mul_expr <<= postfix | mul_expr + Literal("*") + postfix | mul
+primary_expr = ident | constant | (OPAREN + expr + CPAREN)
 
-template_list = Group(Suppress("<") + delimitedList(ident) + Suppress(">"))
-arg_def_list = Group(ZeroOrMore(ident + COLON + type_ + COMMA) + Optional(ident + COLON + type_))
-type_ << ((ident + Optional(template_list, []) + ZeroOrMore("*")) |
-          OneOrMore("*")).set_parse_action(Type)
+postfix_expr <<= primary_expr ^ (postfix_expr + OPAREN + CPAREN)
 
-# term = (OPAREN + expr + CPAREN) | number | Group(ident).set_results_name("ident")
-term = number | ident
-compoundsmt = (OBRACE + ZeroOrMore(smt) + CBRACE).set_parse_action(CompoundSmt)
-compoundexpr = (OBRACE + ZeroOrMore(smt) + expr + CBRACE).set_parse_action(CompoundExpr)
+expr <<= (postfix_expr)
 
-importsmt = (Literal("import") + QuotedString(quoteChar='"')).set_parse_action(ImportSmt)
-
-structinit = (ident + OBRACE + delimitedList(ident + Suppress(":") + expr, ",") + CBRACE).set_parse_action(StructInit)
-
-subscript = (expr + Suppress("[") + expr + Suppress("]"))
-ifexpr = (Suppress("if") + expr + compoundexpr + Suppress("else") + compoundexpr).set_parse_action(IfExpr)
-nonmathexpr = (subscript | ifexpr | funccall | structinit | term | ident)
-mathexpr = infix_notation(nonmathexpr,
-    [
-        (oneOf(". ::"), 2, opAssoc.LEFT, BinOp),
-        (oneOf("* &"), 1, opAssoc.LEFT, UnOp),
-        (oneOf("* / %"), 2, opAssoc.LEFT, BinOp),
-        (oneOf("+ -"), 2, opAssoc.LEFT, BinOp),
-        (oneOf(">= <= == > < !="), 2, opAssoc.LEFT, BinOp),
-        (oneOf("= += -= *= /="), 2, opAssoc.LEFT, BinOp),
-    ]
-)
-
-eqfunc       =  (EQ + expr + SEMI).set_parse_action(CompoundExpr)
-compoundfunc =  EQ + (compoundexpr | compoundsmt) + Optional(SEMI)
-
-funcdef = (Group(ident + Optional(Suppress("::") + ident)) + Suppress(":") + (Literal("fn") | Literal("proc")) +
-          Optional(template_list, []) +
-          Group(Optional(OPAREN + arg_def_list + CPAREN, []) + Optional(Suppress("->") + type_)) +
-          (compoundfunc | eqfunc | SEMI)).set_parse_action(FnDef)
-
-
-structdef = (ident + Suppress(":") + Suppress("struct") + 
-            Optional(template_list, []) + OBRACE +
-            ZeroOrMore(ident + Suppress(":") + type_ + SEMI) + CBRACE).set_parse_action(StructDef)
-
-vardef = Group(Suppress("let") + ident + Optional(COLON + type_) + Optional(EQ + expr) + SEMI).set_parse_action(VarDef)
-
-whilesmt = (Suppress("while") + expr + compoundsmt).set_parse_action(WhileSmt)
-
-ifsmt  = (Suppress("if") + expr + compoundsmt + Optional(Suppress("else") + compoundsmt)).set_parse_action(IfSmt)
-expr << (compoundexpr | mathexpr | nonmathexpr)
-
-smt << (whilesmt | vardef | ifsmt | (expr + Suppress(";")))
-prog = ZeroOrMore(importsmt | funcdef | structdef)
-prog.ignore(comment)
-
-def parse(text):
-    try:
-        return prog.parse_string(text, parse_all=True)
-    except ParseException as err:
-        print(err.explain())
-        exit(1)
-
+print(expr.parse_string("hello()", parse_all=True))

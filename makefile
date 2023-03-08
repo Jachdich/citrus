@@ -1,4 +1,4 @@
-PYTHON = python3.9
+PYTHON = python3
 
 SOURCES := $(shell find src -maxdepth 1 -name "*.lime" -type f)
 OBJECTS := $(patsubst src/%,build/%,$(SOURCES:.lime=.o))

@@ -69,7 +69,6 @@
 // }
 
 
-main: proc -> i32 {
-    let a = malloc(3);
-    a[1]
+main: proc -> i32 = {
+    0
 }

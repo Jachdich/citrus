@@ -18,7 +18,8 @@ String::from_c_str: fn(data: char*) -> String =
 	String { length: strlen(data), data: data };
 
 String::from_pointer: fn(data: char*, length: u32) -> String = 
-	String { length: length,       data: data };
+	String { length: length, data: data };
+
 
 // make_seg: fn(data: char*, seg_len: u32) -> String = {
 // 	if seg_len > 0 {
@@ -44,4 +45,4 @@ String::from_pointer: fn(data: char*, length: u32) -> String =
 // 	splits.push(make_seg(self.data + pos, pos - last_delim));
 // 	splits
 // }
-//String::to_vec: fn(self: String*) -> Vec<String> = Vec::from_pointer(self.data, self.length);
+// String::to_vec: fn(self: String*) -> Vec<String> = Vec::from_pointer(self.data, self.length);

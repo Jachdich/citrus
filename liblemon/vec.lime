@@ -18,3 +18,10 @@ Vec<T>::push: fn<T>(self: Vec<T>*, elem: T) = {
 	}
 	self.data[self.len += 1] = elem;
 }
+
+Vec<T>::__drop__: fn(self: Vec<T>*) = {
+	free(self.data);
+	self.capacity = 0;
+	self.len = 0;
+	self.data = 0;
+}
