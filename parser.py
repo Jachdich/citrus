@@ -231,10 +231,14 @@ class StructInit:
 
 comment = Literal("//") + restOfLine
 
+OPAREN, CPAREN, COMMA, COLON, SEMI, EQ, OBRACE, CBRACE = map(Suppress, "(),:;={}")
+ident = Word(alphas + "_", alphanums + "_").set_parse_action(Ident)
+integer = Combine(Optional("-") + Word("0123456789")).set_parse_action(IntLit)
+decimal = Combine(Optional("-") + Word("0123456789") + Literal(".") + Word("0123456789"))
 
-# expr = Forward()
-# smt = Forward()
-# type_ = Forward()
+expr = Forward()
+smt = Forward()
+type_ = Forward()
 # postfix = Forward()
 # mul_expr = Forward()
 # add_expr = Forward()
@@ -266,10 +270,10 @@ comment = Literal("//") + restOfLine
 
 # # term = (OPAREN + expr + CPAREN) | number | Group(ident).set_results_name("ident")
 # term = number | ident
-# compoundsmt = (OBRACE + ZeroOrMore(smt) + CBRACE).set_parse_action(CompoundSmt)
-# compoundexpr = (OBRACE + ZeroOrMore(smt) + expr + CBRACE).set_parse_action(CompoundExpr)
+compoundsmt = (OBRACE + ZeroOrMore(smt) + CBRACE).set_parse_action(CompoundSmt)
+compoundexpr = (OBRACE + ZeroOrMore(smt) + expr + CBRACE).set_parse_action(CompoundExpr)
 
-# importsmt = (Literal("import") + QuotedString(quoteChar='"')).set_parse_action(ImportSmt)
+importsmt = (Literal("import") + QuotedString(quoteChar='"')).set_parse_action(ImportSmt)
 
 # structinit = (ident + OBRACE + delimitedList(ident + Suppress(":") + expr, ",") + CBRACE).set_parse_action(StructInit)
 
@@ -288,8 +292,8 @@ comment = Literal("//") + restOfLine
 #     ]
 # )
 
-# eqfunc       =  (EQ + expr + SEMI).set_parse_action(CompoundExpr)
-# compoundfunc =  EQ + (compoundexpr | compoundsmt) + Optional(SEMI)
+eqfunc       =  (EQ + expr + SEMI).set_parse_action(CompoundExpr)
+compoundfunc =  EQ + (compoundexpr | compoundsmt) + Optional(SEMI)
 
 # funcdef = (Group(ident + Optional(Suppress("::") + ident)) + Suppress(":") + (Literal("fn") | Literal("proc")) +
 #           Optional(template_list, []) +
@@ -308,36 +312,63 @@ comment = Literal("//") + restOfLine
 # ifsmt  = (Suppress("if") + expr + compoundsmt + Optional(Suppress("else") + compoundsmt)).set_parse_action(IfSmt)
 # expr << (compoundexpr | mathexpr | nonmathexpr)
 
-# smt << (whilesmt | vardef | ifsmt | (expr + Suppress(";")))
-# prog = ZeroOrMore(importsmt | funcdef | structdef)
-# prog.ignore(comment)
-
-# def parse(text):
-#     try:
-#         return prog.parse_string(text, parse_all=True)
-#     except ParseException as err:
-#         print(err.explain())
-#         exit(1)
-
-
-
-OPAREN, CPAREN, COMMA, COLON, SEMI, EQ, OBRACE, CBRACE = map(Suppress, "(),:;={}")
-ident = Word(alphas + "_", alphanums + "_").set_parse_action(Ident)
-integer = Combine(Optional("-") + Word("0123456789")).set_parse_action(IntLit)
-decimal = Combine(Optional("-") + Word("0123456789") + Literal(".") + Word("0123456789"))
+def parse(text):
+    try:
+        return prog.parse_string(text, parse_all=True)
+    except ParseException as err:
+        print(err.explain())
+        exit(1)
 
 constant = decimal | integer
 
-expr = Forward()
-postfix_expr = Forward()
-
 arg_expr_list = Forward()
-arg_expr_list <<= expr | arg_expr_list + COMMA + expr
+arg_expr_list <<= expr ^ (arg_expr_list + COMMA + expr)
 
 primary_expr = ident | constant | (OPAREN + expr + CPAREN)
 
-postfix_expr <<= primary_expr ^ (postfix_expr + OPAREN + CPAREN)
+postfix_expr = Forward()
+postfix_expr <<= (postfix_expr + OPAREN + Optional(arg_expr_list) + CPAREN) | postfix_expr + Literal(".") + ident | postfix_expr + Literal("::") + ident | primary_expr
 
-expr <<= (postfix_expr)
+if_expr = Forward()
+if_expr <<= (Suppress("if") + expr + compoundexpr + Suppress("else") + compoundexpr).set_parse_action(IfExpr) | postfix_expr
 
-print(expr.parse_string("hello()", parse_all=True))
+mathexpr = infix_notation(if_expr,
+    [
+        # (oneOf(". ::"), 2, opAssoc.LEFT, BinOp),
+        (oneOf("* &"), 1, opAssoc.RIGHT, UnOp),
+        (oneOf("* / %"), 2, opAssoc.LEFT, BinOp),
+        (oneOf("+ -"), 2, opAssoc.LEFT, BinOp),
+        (oneOf(">= <= == > < !="), 2, opAssoc.LEFT, BinOp),
+        (oneOf("= += -= *= /="), 2, opAssoc.LEFT, BinOp),
+    ]
+)
+
+expr <<= (mathexpr)
+
+# smt << (whilesmt | vardef | ifsmt | (expr + Suppress(";")))
+smt <<= expr + SEMI
+
+template_list = Group(Suppress("<") + delimitedList(ident) + Suppress(">"))
+arg_def_list = Group(ZeroOrMore(ident + COLON + type_ + COMMA) + Optional(ident + COLON + type_))
+type_ << ((ident + Optional(template_list, []) + ZeroOrMore("*")) |
+          OneOrMore("*")).set_parse_action(Type)
+
+funcdef = (Group(ident + Optional(Suppress("::") + ident)) + Suppress(":") + (Literal("fn") | Literal("proc")) +
+          Optional(template_list, []) +
+          Group(Optional(OPAREN + arg_def_list + CPAREN, []) + Optional(Suppress("->") + type_)) +
+          (compoundfunc | eqfunc | SEMI)).set_parse_action(FnDef)
+
+#DEBUG
+structdef = Forward()
+prog = ZeroOrMore(importsmt | funcdef | structdef)
+prog.ignore(comment)
+
+print(expr.parse_string("hello(a, 3)", parse_all=True))
+print(expr.parse_string("69 * 4", parse_all=True))
+print(expr.parse_string("&asdf", parse_all=True))
+print(expr.parse_string("1 == 2", parse_all=True))
+print(expr.parse_string("if 3 { 1 } else { 2 }", parse_all=True))
+
+print(smt.parse_string("1==2;"))
+print(prog.parse_string("String::parse: fn<T,U>(a: f64, b: T) -> U = { 1 == 2; if a == 3 { 1 } else { 2 } }"))
+print(compoundexpr.parse_string("{ 1 == 2; if a == 3 { 1 } else { 2 } }"))
