@@ -372,3 +372,19 @@ print(expr.parse_string("if 3 { 1 } else { 2 }", parse_all=True))
 print(smt.parse_string("1==2;"))
 print(prog.parse_string("String::parse: fn<T,U>(a: f64, b: T) -> U = { 1 == 2; if a == 3 { 1 } else { 2 } }"))
 print(compoundexpr.parse_string("{ 1 == 2; if a == 3 { 1 } else { 2 } }"))
+
+# WEIRD SHIT
+from pyparsing import *
+OPAREN, CPAREN, COMMA, COLON, SEMI, EQ, OBRACE, CBRACE = map(Suppress, "(),:;={}")
+ident = Word(alphas + "_", alphanums + "_")
+template_list = Group(Suppress("<") + delimitedList(ident) + Suppress(">"))
+
+type_ = Group((ident + Optional(template_list, []) + ZeroOrMore("*")) | OneOrMore("*"))
+
+arg_type_list = type_ + ZeroOrMore(COMMA + type_) + Optional(COMMA)
+proto_element = Group(ident + COLON + ((Suppress("fn") + OPAREN + arg_type_list + CPAREN + Optional(Suppress("->") + type_)) | type_))
+anon_proto = ident + Suppress("with") + OPAREN + proto_element + ZeroOrMore(COMMA + proto_element) + Optional(COMMA)
+
+print(arg_type_list.parse_string("Self*, i32"))
+print(proto_element.parse_string("a: fn(Self*, i32) -> i32"))
+print(anon_proto.parse_string("T with (a: fn(Self*, i32), c: U)"))
