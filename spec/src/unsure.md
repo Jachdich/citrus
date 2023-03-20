@@ -53,3 +53,48 @@ So the solution so far is to give up and just do manual memory management for no
 ## Algebraic effects???
 
 "It's just rewriting the stack at runtime, how hard can it be?"
+
+## Loops
+
+Maybe `while` on its own could be an infinite loop? Trying so hard not to copy rust's `loop` rn.
+
+```citrus
+while {
+    // loop until break
+}
+```
+
+## Import/include/use/...
+
+What word should I use? Also should it be a path or a namespace? dot seperated or colon seprated? semicolon at the end or not?
+
+```citrus
+// currently, it's like this
+import "liblemon/vec.lime"
+
+// other options
+import "liblemon/vec.lime";
+import liblemon.vec;
+import liblemon::vec;
+// additionally the above but replace "import" with any other suitable word
+```
+
+## Namespaces
+
+Maybe I should implement namespaces... that might be good... and perhaps enforce a new namespace for each new file.
+
+## For loops
+
+Perhaps support separate `for` and `foreach` loops? like:
+
+```citrus
+foreach i in iter {
+    
+}
+
+for mut i = 0, i < 3, i += 1 {
+    
+}
+```
+
+Or maybe I should just support `foreach` and call it `for`, like rust and python do. Currently thinking of doing that but idk maybe the latter loop type might be useful.
