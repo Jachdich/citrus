@@ -104,3 +104,85 @@ foo: fn() = {
 	let splits = str.split_eat();
 	putstr(str&); //ERROR: use after eat
 }
+
+
+/*
+More ideas
+----------
+I REALLY NEED TO SYNC THIS (one way or another, idk) WITH SPEC/SRC/UNSURE.MD
+
+Definitely going in, need finalising
+------------------------------------
+
+Boolean operators use keywords
+
+Figure out how to do optional and named arguments
+
+Not sure
+--------
+
+Units
+- some variables can optionally be assigned a unit and multipliers can automatically be added
+mut a = 13µm;
+a += 10nm;
+- many problems
+- functions like sqrt modify types
+- 10m/5s = 2ms^-1 or something
+
+
+Operators
+- define custom operators?
+- @ for deref
+- ugh maybe I should have a range operator
+- maybe more like
+	- sqrt
+	- square
+	- append
+	- reverse (~)
+	- split
+	- `in`
+	- len (#)
+	- divisibility
+- chained operators, a < b < c
+	- perhaps support ≤ for <= etc for the lolz
+	- maybe that could also be the range syntax
+		- for 3 < x < 10 {}
+		- for x < 10 {}
+	
+
+Pipe operator
+- like functional languages
+- [3,2,1] |> sorted |> fn(n:i32)->i32 = n + 1
+
+Partial application
+- like functional languages again
+- helps previous
+- maybe some syntax sugar in conjunction with/instead of partial application
+	- [3, 2, 1] |> add(1, $) where that creates a lambda and passes in the value piped in as $
+		- maybe have $add(1, $)
+	- perhaps better lambdas, like \x -> map f x like in haskell
+		- but I don't like \
+		- seen lambda syntax of [n → n+1], don't think it would fit but maybe good ideas
+
+Maybe I should not have operator precedence
+- maybe implicit parens lol, 1 * 2+3 == 1 * (2 + 3)
+
+Lua-style string literals
+- allows nesting, cos opening != closing
+
+Generalised <something>= syntax
+- like +=, -= etc but works on any function
+- a max= b is sugar for a = max(a, b)
+- a foo= (b, c) is sugar for a = foo(a, b, c)
+
+
+Really should have some kind of built-in GUI, args processor, whatnot like py for a reasonably good experience, but not to detract from 3rd party libraries
+
+Compile-time guarentees (also can be specified by the programmer) that values will be in certain ranges
+
+See side effects at method usage
+- maybe just mem, but others as well. show where memory is being allocated because that's important
+
+
+
+*/

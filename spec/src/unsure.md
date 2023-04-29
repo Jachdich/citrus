@@ -1,9 +1,5 @@
 # Things I'm not certain on
 
-## Variable declerations
-
-Not sold on `let` and `mut`, tbh. I want to encourage const variables (make them as easy or easier to define than mutable variables). Perhaps `const a = 3;` and `mut a = 3;`? or `let` and `var`? or any other words?
-
 ## `proc` and `fn`
 
 An idea I had was to separate "pure" functions from "impure" procedures. Procedures could call other procedures or functions, and would be defined with `proc`; whereas functions could only call other functions and could not have side effects. The problem is defining what a side effect is in this context - is having internal mutable state (e.g. a temp vector) a side effect? If we're too strict on this, then having any pure functions would be rare; however if we're not strict enough it isn't useful. It might also just not be useful at all.
@@ -53,3 +49,8 @@ So the solution so far is to give up and just do manual memory management for no
 ## Algebraic effects???
 
 "It's just rewriting the stack at runtime, how hard can it be?"
+
+## Minor syntax decision paralysis
+
+- Dedicated range syntax (`a..b`, `a:b`, etc.) or function `range(a, b)`?
+- `with` in while loop to declare a scoped iteration variable? Could be annoying if I use `with` in the protocol syntax, or might not be, idk.

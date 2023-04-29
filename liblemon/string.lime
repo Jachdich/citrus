@@ -7,42 +7,71 @@ import "liblemon/mem.lime"
 // operator []
 // pointer arith
 
+Len: protocol = {}
+Len::len: fn(self: Self*) -> u64;
+
 strlen: fn(data: char*) -> u64;
 
-String: struct {
+// TODO auto forward declare this
+StringSlice: struct;
+StringOwned: struct;
+
+String: protocol = {}
+
+
+String::split: fn(self: Self*, delim: char) -> Vec<StringSlice> = {
+	
+}
+
+String::index: fn(self: Self*, idx: u64) -> char = {
+	
+}
+
+StringSlice: struct(String + Len) {
 	length: u32;
 	data: char*;
 }
 
-String::from_c_str: fn(data: char*) -> String =
-	String { length: strlen(data), data: data };
+StringOwned: struct(String + Len) {
+	length: u32;
+	data: char*;
+}
 
-String::from_pointer: fn(data: char*, length: u32) -> String = 
-	String { length: length, data: data };
+StringOwned::len: fn(self: StringOwned*) -> u64 = self.length;
+StringSlice::len: fn(self: StringSlice*) -> u64 = self.length;
 
 
-// make_seg: fn(data: char*, seg_len: u32) -> String = {
-// 	if seg_len > 0 {
-// 		let seg = malloc(seg_len);
-// 		memcpy(data, seg, seg_len);
-// 		String { length: seg_len, data: seg }
-// 	} else {
-// 		String { length: 0, data: 0 }
-// 	}
-// }
+StringSlice::from_c_str: fn(data: char*) -> String =
+	StringSlice { length: strlen(data), data: data };
 
-// String::split: fn(self: String*, delim: char) -> Vec<String> = {
-// 	let splits = Vec<String>::new();
-// 	let last_delim = 0;
-// 	let pos = 0;
-// 	while pos < self.length {
-// 		if self.data[pos] == delim {
-// 			let seg_len = pos - last_delim;
-// 			splits.push(make_seg(self.data + pos, seg_len));
-// 		}
-// 		pos += 1;
-// 	}
-// 	splits.push(make_seg(self.data + pos, pos - last_delim));
-// 	splits
-// }
-// String::to_vec: fn(self: String*) -> Vec<String> = Vec::from_pointer(self.data, self.length);
+StringSlice::from_pointer: fn(data: char*, length: u32) -> String = 
+	StringSlice { length: length, data: data };
+
+
+
+make_seg: fn(data: char*, seg_len: u32) -> StringSlice = {
+	if seg_len > 0 {
+		let seg = malloc(seg_len);
+		memcpy(data, seg, seg_len);
+		String { length: seg_len, data: seg }
+	} else {
+		String { length: 0, data: 0 }
+	}
+}
+
+String::split: fn<T: String>(self: T*, delim: char) -> Vec<StringSlice> = {
+	let splits = Vec<StringSlice>::new();
+	let last_delim = 0;
+	let pos = 0;
+	while pos < self.length {
+		if self.data[pos] == delim {
+			let seg_len = pos - last_delim;
+			splits.push(make_seg(self.data + pos, seg_len));
+		}
+		pos += 1;
+	}
+	splits.push(make_seg(self.data + pos, pos - last_delim));
+	splits
+}
+
+StringOwned::to_vec: fn(self: StringOwned*) -> Vec<char> = Vec::from_pointer(self.data, self.length);

@@ -5,7 +5,8 @@ Variables are defined using `let` (immutable) or `mut` (mutable):
 ```citrus
 let a = 6;
 mut counter = 0;
-counter += 1;
+counter += a;
+a += counter; // ERROR: cannot assign to immutable variable
 ```
 
 # Types

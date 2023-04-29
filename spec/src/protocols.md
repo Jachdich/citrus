@@ -5,8 +5,20 @@ A protocol is a set of features that a struct must have. This can include associ
 ```citrus
 Shape: protocol {
     calculate_area: fn(self: Self*) -> f64;
+    get_radius: fn(self: Self*) -> f64;
     radius: f64;
 }
+```
+
+You can implement default methods on protocols, to allow code reuse:
+
+```citrus
+//TODO this syntax is MID!
+// Since get_radius is the same for all shapes, it makes sense to implement it here
+Shape::get_radius: fn(self: Self*) -> f64 = self.radus;
+
+// It's implemented like a generic function, with added sugar
+get_radius: fn<T: Shape>(self: T*) -> f64 = self.radius;
 ```
 
 Here's an example of implementing a protocol on a struct:

@@ -21,5 +21,6 @@ Reader::read_line: fn(self: Reader*) -> String = {
 	while self.peek() != '\n' {
 		new_str.push(self.consume());
 	}
-	self
+	self.consume();
+	String::from_vec()
 }
