@@ -1,1 +1,7 @@
-main: fun() -> i32 = 69 + 420;
+main: fun<T: Write + Read, U: A>() -> i32 = {
+
+}
+
+String: struct = {
+    
+}

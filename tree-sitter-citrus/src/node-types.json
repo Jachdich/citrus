@@ -23,6 +23,40 @@
     }
   },
   {
+    "type": "block",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "statement",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "compound_expr",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "expr",
+          "named": true
+        },
+        {
+          "type": "statement",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "definition",
     "named": true,
     "fields": {},
@@ -31,7 +65,11 @@
       "required": true,
       "types": [
         {
-          "type": "fndef",
+          "type": "func_def",
+          "named": true
+        },
+        {
+          "type": "struct_def",
           "named": true
         }
       ]
@@ -53,7 +91,7 @@
     }
   },
   {
-    "type": "fndef",
+    "type": "func_def",
     "named": true,
     "fields": {},
     "children": {
@@ -62,6 +100,14 @@
       "types": [
         {
           "type": "arg_list",
+          "named": true
+        },
+        {
+          "type": "block",
+          "named": true
+        },
+        {
+          "type": "compound_expr",
           "named": true
         },
         {
@@ -74,6 +120,10 @@
         },
         {
           "type": "primitive_type",
+          "named": true
+        },
+        {
+          "type": "template_list",
           "named": true
         },
         {
@@ -112,6 +162,25 @@
     "fields": {}
   },
   {
+    "type": "proto_type",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "primitive_type",
+          "named": true
+        },
+        {
+          "type": "type_ident",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "source_file",
     "named": true,
     "fields": {},
@@ -121,6 +190,63 @@
       "types": [
         {
           "type": "definition",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "statement",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "expr",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "struct_def",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "ident",
+          "named": true
+        },
+        {
+          "type": "primitive_type",
+          "named": true
+        },
+        {
+          "type": "type_ident",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "template_list",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "proto_type",
+          "named": true
+        },
+        {
+          "type": "template_type",
           "named": true
         }
       ]
@@ -162,6 +288,10 @@
     "named": false
   },
   {
+    "type": ",",
+    "named": false
+  },
+  {
     "type": "-",
     "named": false
   },
@@ -182,7 +312,15 @@
     "named": false
   },
   {
+    "type": "<",
+    "named": false
+  },
+  {
     "type": "=",
+    "named": false
+  },
+  {
+    "type": ">",
     "named": false
   },
   {
@@ -230,6 +368,18 @@
     "named": true
   },
   {
+    "type": "proc",
+    "named": false
+  },
+  {
+    "type": "struct",
+    "named": false
+  },
+  {
+    "type": "template_type",
+    "named": true
+  },
+  {
     "type": "u16",
     "named": false
   },
@@ -243,6 +393,14 @@
   },
   {
     "type": "u8",
+    "named": false
+  },
+  {
+    "type": "{",
+    "named": false
+  },
+  {
+    "type": "}",
     "named": false
   }
 ]
