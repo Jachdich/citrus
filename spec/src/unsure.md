@@ -50,7 +50,37 @@ So the solution so far is to give up and just do manual memory management for no
 
 "It's just rewriting the stack at runtime, how hard can it be?"
 
+## Loops
+
+Maybe `while` on its own could be an infinite loop? Trying so hard not to copy rust's `loop` rn.
+
+```citrus
+while {
+    // loop until break
+}
+```
+
+## Import/include/use/...
+
+What word should I use? Also should it be a path or a namespace? dot seperated or colon seprated? semicolon at the end or not?
+
+```citrus
+// currently, it's like this
+import "liblemon/vec.lime"
+
+// other options
+import "liblemon/vec.lime";
+import liblemon.vec;
+import liblemon::vec;
+// additionally the above but replace "import" with any other suitable word
+```
+
+## Namespaces
+
+Maybe I should implement namespaces... that might be good... and perhaps enforce a new namespace for each new file.
+
 ## Minor syntax decision paralysis
 
 - Dedicated range syntax (`a..b`, `a:b`, etc.) or function `range(a, b)`?
 - `with` in while loop to declare a scoped iteration variable? Could be annoying if I use `with` in the protocol syntax, or might not be, idk.
+

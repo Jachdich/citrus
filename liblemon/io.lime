@@ -7,11 +7,18 @@ File: struct {
 	_ptr: *;
 }
 
-//File::open: proc(name: String&) -> Result<File*, FileError> {
-//	File {
-//		_ptr: fopen(name.c_str(), c"r")
-//	}
-//}
+// File::open: proc(name: String&) -> Result<File*, FileNotFoundError> {
+// 	let _ptr = fopen(name.c_str9), c"r");
+// 	SCREE { //allows you to do stupid shit
+// 		if _ptr == 0 {
+// 			return Err(FileNotFoundError::new(name));
+// 		}
+// 	}
+	
+// 	Ok(File {
+// 		_ptr,
+// 	})
+// }
 
 // File::read: proc(self: File*) -> String {
 //     fseek(fp, 0, SEEK_END);
@@ -25,6 +32,14 @@ File: struct {
 //     r->start = contents;
 //     r->pos = contents;
 //     r->len = fsize;
+// }
+
+// File::readline: proc(self: File*) -> String {
+// 	mut string = String::new();
+// 	while (not end of line) { 
+// 		keep reading;
+// 	}
+// 	string
 // }
 
 putd: proc(a: i64);
