@@ -3,9 +3,9 @@ import "liblemon/string.lime"
 
 fopen: proc(fname: char*, mode: char*) -> *;
 
-File: struct {
-	_ptr: *;
-}
+// File: struct {
+	// _ptr: *;
+// }
 
 // File::open: proc(name: String&) -> Result<File*, FileNotFoundError> {
 // 	let _ptr = fopen(name.c_str9), c"r");

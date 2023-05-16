@@ -1,0 +1,16 @@
+// Len: protocol {}
+// Len::__len__: fn(self: Self*) -> u64;
+
+// Index: protocol<T> {}
+// Index<T>::__index__: fn<T>(self: Self*, idx: u64) -> T;
+
+// Drop: protocol {}
+// Drop::__drop__: proc$(self: Self*);
+
+// Add: protocol<T> {}
+// Sub: protocol<T> {}
+// Mul: protocol<T> {}
+// Div: protocol<T> {}
+// Mod: protocol<T> {}
+
+// Add::__add__: proc$(self: Self*, other: T*);

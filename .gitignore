@@ -16,3 +16,5 @@ liblemon/*.o
 liblemon/*.a
 citrus
 /spec/book
+tree-sitter-citrus/target
+rust_compiler/target

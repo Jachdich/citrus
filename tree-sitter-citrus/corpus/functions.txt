@@ -1,0 +1,186 @@
+================
+Basic syntax
+================
+main: fun() {
+}
+
+---
+
+(source_file
+  (definition
+    (func_def
+      (func_name)
+      (arg_def_list)
+      (block))))
+
+
+=====================
+Templates & protocols
+=====================
+
+main: fun<T: Write + Read, U: A>(a: T, b: U, c: i32) -> i32 {
+    a + b + c
+}
+
+---
+
+(source_file
+  (definition
+    (func_def
+      (func_name)
+      (template_def_list
+        (template_type)
+        (proto_type
+          (type_ident
+            (ident)))
+        (proto_type
+          (type_ident
+            (ident)))
+        (template_type)
+        (proto_type
+          (type_ident
+            (ident))))
+      (arg_def_list
+        (ident)
+        (type_ident
+          (ident))
+        (ident)
+        (type_ident
+          (ident))
+        (ident)
+        (primitive_type))
+      (primitive_type)
+      (compound_expr
+        (expr
+          (mathexpr
+            (expr
+              (mathexpr
+                (expr
+                  (mathexpr
+                    (ident)))
+                (expr
+                  (mathexpr
+                    (ident)))))
+            (expr
+              (mathexpr
+                (ident)))))))))
+
+
+=====
+Equals syntax
+===
+add: fun(a: u32, b: u32) -> u32 = a + b;
+
+---
+(source_file
+  (definition
+    (func_def
+      (func_name)
+      (arg_def_list
+        (ident)
+        (primitive_type)
+        (ident)
+        (primitive_type))
+      (primitive_type)
+      (expr
+        (mathexpr
+          (expr
+            (mathexpr
+              (ident)))
+          (expr
+            (mathexpr
+              (ident))))))))
+
+
+===
+Omitting return type
+===
+add: fun(a: u32, b: u32) = a + b;
+
+---
+(source_file
+  (definition
+    (func_def
+      (func_name)
+      (arg_def_list
+        (ident)
+        (primitive_type)
+        (ident)
+        (primitive_type))
+      (expr
+        (mathexpr
+          (expr
+            (mathexpr
+              (ident)))
+          (expr
+            (mathexpr
+              (ident))))))))
+
+====
+Proc
+====
+test: proc(a: i32, b: i32) = a + b;
+
+---
+(source_file
+  (definition
+    (func_def
+      (func_name)
+      (arg_def_list
+        (ident)
+        (primitive_type)
+        (ident)
+        (primitive_type))
+      (expr
+        (mathexpr
+          (expr
+            (mathexpr
+              (ident)))
+          (expr
+            (mathexpr
+              (ident))))))))
+
+============
+Void pointer
+============
+
+malloc: proc(sz: u64) -> *;
+
+---
+(source_file
+  (definition
+    (func_def
+      (func_name)
+      (arg_def_list
+        (ident)
+        (primitive_type)))))
+
+
+=================
+default arguments
+=================
+
+ree: fun(a: u32, b: u32 = 16) = a + b;
+
+---
+
+(source_file
+  (definition
+    (func_def
+      (func_name)
+      (arg_def_list
+        (ident)
+        (primitive_type)
+        (ident)
+        (primitive_type)
+        (expr
+          (mathexpr
+            (int))))
+      (expr
+        (mathexpr
+          (expr
+            (mathexpr
+              (ident)))
+          (expr
+            (mathexpr
+              (ident))))))))

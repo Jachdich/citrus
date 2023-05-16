@@ -1,0 +1,6 @@
+Slice: struct<T> {
+    data: T*;
+    length: u64;
+}
+
+Slice<T>::from_pointer: fn<T>(data: T*, length: u64) -> Slice<T> = Slice<T> { data: data, length: length };

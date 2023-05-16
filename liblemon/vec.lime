@@ -1,15 +1,16 @@
 import "liblemon/mem.lime"
+import "liblemon/ops.lime"
 
-Vec: struct<T>(Drop) {
+Vec: struct<T> {
 	len: u64;
 	capacity: u64;
 	data: T*;
 }
 
-Vec<T>::new: fn<T>() -> Vec<T> =
+Vec<T>::new: fn<T>() =
 	Vec<T> { len: 0, capacity: 1, data: malloc(1 * sizeof(T)) };
 
-Vec<T>::from_pointer: fn<T>(pointer: T*, length: u64) -> Vec<T> =
+Vec<T>::from_pointer: fn<T>(pointer: T*, length: u64) =
 	Vec<T> { len: length, capacity: length, data: pointer };
 
 Vec<T>::push: fn<T>(self: Vec<T>*, elem: T) = {
@@ -19,9 +20,16 @@ Vec<T>::push: fn<T>(self: Vec<T>*, elem: T) = {
 	self.data[self.len += 1] = elem;
 }
 
-Vec<T>::__drop__: fn<T>(self: Vec<T>*) = {
+Vec<T>::__drop__: proc$<T>(self: Vec<T>*) = {
 	free(self.data);
 	self.capacity = 0;
 	self.len = 0;
 	self.data = 0;
 }
+
+Vec<T>::__index__: fn<T>(self: Vec<T>*, idx: u64) = self.data[idx];
+Vec<T>::__len__: fn<T>(self: Vec<T>*) = self.len;
+// Vec<T>::__add__: proc$<T>()
+
+// Vec<T> implements<T> Len + Drop + Index<T>;
+

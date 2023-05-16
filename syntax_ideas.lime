@@ -1,13 +1,11 @@
-//slightly modified rust style struct declaration 
-struct S {
+// struct declaration 
+S: struct {
     a: u32;
     b: u32*;
 }
 
-
-
-//modified rust style fn
-do_nothing: fn(a: u32) -> u32 = {
+// function definition
+do_nothing: func(a: u32) -> u32 = {
     a
 }
 
@@ -35,23 +33,12 @@ AssocMethod::can_access_self: fn(self: AssocMethod*) = self.some_data;
 
 
 //rust style error handling 
-//not sure about this generic syntax, i want genetics to be as simple as possible though 
-#[generic(T)]
-union Option {
+Option<T>: union {
     Some: T;
     None;
 }
 
-//perhaps implicitly like ths
-union Option<T> {
-	Some: T;
-	None;
-}
-
 can_fail: fn() -> Option<i32> = None
-can_fail: fn() -> Option<i32> = {
-	None
-}
 
 handle_fail: fn() -> Option<i32> = {
 	let res_a = can_fail()?; //rust style ? syntax
@@ -88,35 +75,19 @@ something: fn() = {
 	putd(6); //ERROR: can't call proc from fn
 }
 
-
-//eating??
-split_eat: fn(a: eats String*) -> Vec<String> = {
-	//doesn't preserve data in `a`
-	//use of whatever was passed to the fn is prohibited
-}
-
-split_copy: fn(a: String*) -> Vec<String> = {
-	//here whatever struct `a` was must still be valid later
-}
-
-foo: fn() = {
-	let str = String::from_static("asd");
-	let splits = str.split_eat();
-	putstr(str&); //ERROR: use after eat
-}
-
-
 /*
 More ideas
 ----------
 I REALLY NEED TO SYNC THIS (one way or another, idk) WITH SPEC/SRC/UNSURE.MD
 
+To document:
+	- protocol template shit
+	- 
+
 Definitely going in, need finalising
 ------------------------------------
 
 Boolean operators use keywords
-
-Figure out how to do optional and named arguments
 
 Not sure
 --------
@@ -142,6 +113,7 @@ Operators
 	- split
 	- `in`
 	- len (#)
+		- I like this one
 	- divisibility
 - chained operators, a < b < c
 	- perhaps support ≤ for <= etc for the lolz
@@ -152,7 +124,8 @@ Operators
 
 Pipe operator
 - like functional languages
-- [3,2,1] |> sorted |> fn(n:i32)->i32 = n + 1
+- [3,2,1] |> sorted |> fn(n:i32) = n + 1
+	- kinda need a better way of defining lambdas.
 
 Partial application
 - like functional languages again
@@ -182,7 +155,18 @@ Compile-time guarentees (also can be specified by the programmer) that values wi
 
 See side effects at method usage
 - maybe just mem, but others as well. show where memory is being allocated because that's important
+	- current idea: declare a block that allocates using proc$ and call it with $ (like malloc$())
+	- would be great to expand this to other effects.
 
+Slices
+- need syntax and rules for converting owned types to slices (String to Slice[char], Vec[T] to Slice[T] etc)
+
+Need a way to implement a protocol on a type you haven't created.
+
+Template syntax
+- maybe no use <>
+
+Figure out how tf protocols work with templates.
 
 
 */

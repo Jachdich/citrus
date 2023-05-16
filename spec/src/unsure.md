@@ -2,7 +2,7 @@
 
 ## `proc` and `fn`
 
-An idea I had was to separate "pure" functions from "impure" procedures. Procedures could call other procedures or functions, and would be defined with `proc`; whereas functions could only call other functions and could not have side effects. The problem is defining what a side effect is in this context - is having internal mutable state (e.g. a temp vector) a side effect? If we're too strict on this, then having any pure functions would be rare; however if we're not strict enough it isn't useful. It might also just not be useful at all.
+An idea I had was to separate "pure" functions from "impure" procedures. Procedures could call other procedures or functions, and would be defined with `proc`; whereas functions could only call other functions and could not have side effects. The problem is defining what a side effect is in this context - is having internal mutable state (e.g. a temp vector) a side effect? If we're too strict on this, then having any pure functions would be rare; however if we're not strict enough it isn't useful. It might also just not be useful at all. See the [functions](functions.md) page for more detial.
 
 ## Protocols
 
@@ -24,31 +24,17 @@ Should the `=` be optional in function definitions to allow `thing: fn() {}` rat
 
 How do I make it less like rust?
 
-## Oh my, *lifetimes*
+## Memory management
 
 So I was wanting to do some rusty-c++y-(probably other languages)y stuff but it is *hard*. I want to not require any kind of explicit memory management if possible, but not entirely hide it like rust does. So `malloc`ing should be *possible* but absolutely not *necessary*.
 
-Here's the thing: How do I keep track of who owns data? And what does it really *mean* for something to be owned? Rust solves this by saying that a reference isn't owned, but a not-reference is owned and therefore can be moved or dropped. The issue is, citrus doesn't *have* references, only pointers. Here's an example to illustrate the issue:
-
-```citrus
-String: struct {
-    data: char*;
-    length: u64;
-}
-
-String::split: fn(self: String*, delim: char) -> Vec<String*> = {
-    // logic
-}
-```
-
-In that example, if `split` simply returns a Vec of strings that reference the data from the original string, then they must not be owned otherwise when the `Vec` is dropped, its contents will be dropped too, and the same bit of data will be freed many times. So that means there must be a Vec of String*s, but what are the pointers to? I can't `malloc` them, because they would never be freed, and they can't be pointers to local variables because they would go out of scope. So I can't really use pointers to denote ownership, because it wouldn't allow the creation of non-owned objects in certain situations. idk it's hard to explain.
-
-So the solution so far is to give up and just do manual memory management for now. this is hard. maybe I need a borrow checker....
-
+I kinda do want to implement a borrow checker and check lifetimes, but it's quite hard and I don't know if it would be worth it or whether I could even do it.
 
 ## Algebraic effects???
 
 "It's just rewriting the stack at runtime, how hard can it be?"
+
+Seriously though it would be cool. Not sure if it's worth the effort though.
 
 ## Loops
 
@@ -82,5 +68,7 @@ Maybe I should implement namespaces... that might be good... and perhaps enforce
 ## Minor syntax decision paralysis
 
 - Dedicated range syntax (`a..b`, `a:b`, etc.) or function `range(a, b)`?
+    - should a < b < c define a range or check against a range? can it do both? kinda like = vs ==
 - `with` in while loop to declare a scoped iteration variable? Could be annoying if I use `with` in the protocol syntax, or might not be, idk.
-
+- `fn`, `fun` or `func`? `fn` is nice and short but `func` is similar to `proc`.
+- Template syntax: Should it be Vec<T> or Vec[T]? the <> is more common but causes parsing issues when using chained < comparison < operators.
