@@ -71,6 +71,9 @@ class UnOp(Ast):
     def __repr__(self):
         return f"UnOp({repr(self.operand)}{self.op})"
 
+    def __str__(self):
+        return f"{self.operand}{self.op}"
+
 class ImportSmt(Ast):
     def __init__(self, src, pos, tokens):
         super().__init__(src, pos, tokens)
@@ -88,8 +91,8 @@ class FnDef(Ast):
             self.name = tokens[0][0].val
             self.assoc_struct = None
         else:
-            self.name = tokens[0][2].val
-            self.assoc_struct = Type(src, pos, None, name=tokens[0][0].val, num_ptr=0, template_args=tokens[0][1])
+            self.name = tokens[0][1].val
+            self.assoc_struct = tokens[0][0]
         
         self.template_args = tokens[2]
         
@@ -105,7 +108,10 @@ class FnDef(Ast):
     def __repr__(self):
         return f"FnDef({(self.assoc_struct.name + '::') if self.assoc_struct is not None else ''}{self.name}<{self.template_args}>({', '.join([str(a) + ': ' + str(b) for a, b in self.args])}) -> {self.ret_ty} = {self.body})"
 
-    def get_mangled_name(self):
+    def __str__(self):
+        return f"{(self.assoc_struct.name + '::') if self.assoc_struct is not None else ''}{self.name}: fn<{self.template_args}>({', '.join([str(a) + ': ' + str(b) for a, b in self.args])}){(' -> ' + str(self.ret_ty)) if self.ret_ty is not None else ''} = {self.body}"
+
+    def get_semimangled_name(self):
         if self.assoc_struct is not None:
             return self.assoc_struct.name + "_" + self.name
         return self.name
@@ -133,7 +139,7 @@ class VarDef(Ast):
         self.val = None
         
         while len(tokens) > 0:
-            if type(tokens[0]) == Type:
+            if type(tokens[0]) == TypeSpecifier:
                 self.ty = tokens[0]
             else:
                 self.val = tokens[0]
@@ -189,6 +195,9 @@ class CompoundSmt(Ast):
     def __repr__(self):
         return f"CompoundSmt({{{self.smts}}})"
 
+    def __str__(self):
+        return "{" + "\n".join([str(n) for n in self.smts]) + "\n}"
+
 class CompoundExpr(Ast):
     def __init__(self, src, pos, tokens):
         super().__init__(src, pos, tokens)
@@ -197,6 +206,8 @@ class CompoundExpr(Ast):
     
     def __repr__(self):
         return f"CompoundExpr({{{self.smts + [self.expr,]}}})"
+    def __str__(self):
+        return "{" + '\n'.join([str(n) for n in self.smts]) + "\n" + str(self.expr) + "\n}"
 
 class FuncCall(Ast):
     def __init__(self, src, pos, tokens):
@@ -210,17 +221,13 @@ class FuncCall(Ast):
     def __repr__(self):
         return f"FuncCall({self.fn_expr}({self.args}))"
 
-class Type(Ast):
-    def __init__(self, src, pos, tokens, *, name=None, num_ptr=None, template_args=None):
+    def __str__(self):
+        return f"{self.fn_expr}({self.args})"
+
+class TypeSpecifier(Ast):
+    def __init__(self, src, pos, tokens):
         super().__init__(src, pos, tokens)
-        self.fn_ptr = False
         self.template_args = []
-        if name is not None and num_ptr is not None:
-            self.name = name
-            self.num_ptr = num_ptr
-            if template_args is not None:
-                self.template_args = template_args
-            return
 
         if type(tokens[0]) == str and tokens[0] == "*":
             self.name = "void"
@@ -234,26 +241,11 @@ class Type(Ast):
             self.template_args = tokens[1]
 
     def __repr__(self):
-        if self.fn_ptr:
-            return f"fn({', '.join([n + ': ' + repr(t) for n, t in self.args])})" + (("-> " + self.ty.val) if self.ty is not None else "")
-        else:
-            return "Type(" + self.name + (("<" + ", ".join(map(repr, self.template_args)) + ">") if len(self.template_args) > 0 else "")  + "*" * self.num_ptr + ")"
+        return "Type(" + self.name + (("<" + ", ".join(map(repr, self.template_args)) + ">") if len(self.template_args) > 0 else "")  + "*" * self.num_ptr + ")"
     
     def __str__(self):
         return self.name + (("<" + ", ".join(map(repr, self.template_args)) + ">") if len(self.template_args) > 0 else "")  + "*" * self.num_ptr
     
-    def __eq__(self, other):
-        if self.fn_ptr:
-            return self.args == other.args and self.ty == other.ty
-        else:
-            return self.name == other.name and self.num_ptr == other.num_ptr
-    
-    def __hash__(self):
-        if self.fn_ptr:
-            return hash(self.args) ^ hash(self.ty)
-        else:
-            return hash(self.name) ^ hash(self.num_ptr)
-
     def get_mangled_name(self):
         templates = ""
         if len(self.template_args) > 0:
@@ -377,10 +369,10 @@ smt <<= vardef | while_smt | if_smt | expr + SEMI
 template_list = Group(Suppress("<") + delimitedList(type_, delim=",") + Suppress(">"))
 arg_def_list = Group(ZeroOrMore(ident + COLON + type_ + COMMA) + Optional(ident + COLON + type_))
 type_ << ((ident + Optional(template_list, []) + ZeroOrMore("*")) |
-          OneOrMore("*")).set_parse_action(Type)
+          OneOrMore("*")).set_parse_action(TypeSpecifier)
 
 funcdef = (Group(
-                ((ident + Optional(template_list, [])) + Suppress("::") + ident) | ident
+                Optional(type_ + Suppress("::")) + ident
             ) +
             Suppress(":") +
             (Literal("fn") | Literal("proc$") | Literal("proc") | Literal("func") | Literal("fun")) +
@@ -412,7 +404,8 @@ prog.ignore(comment)
 
 if __name__ == "__main__":
     def p(t, v=prog):
-        print(v.parse_string(t, parseAll=True))
+        print("\n".join([str(n) for n in v.parse_string(t, parseAll=True)]))
+        print("==============================+")
 
     p("hello(a, 3)", expr)
     p("69 * 4", expr)

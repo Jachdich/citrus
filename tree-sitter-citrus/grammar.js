@@ -126,7 +126,7 @@ module.exports = grammar({
             optional(seq(alias($.ident, $.func_struct), "::")),
             alias($.ident, $.func_name),
             ":",
-            choice("fun", "proc"),
+            choice("func", "fun", "fn", "proc"),
             optional($.template_def_list),
             $.arg_def_list,
             optional(seq("->", $._type)),

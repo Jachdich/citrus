@@ -1,5 +1,55 @@
 # Functions
 
+
+IDEAS:
+
+```citrus
+// previous syntax idea would be using : like this
+// but that is a bit weird cos normally the : dictates the type not the value
+Befunge: struct {
+    a: i32;
+    b: i64;
+    do_something: fn(self: Befunge*) = |self| self.a;
+    something_else: fn(self: Befunge*) {
+        a
+    }
+
+}
+// perhaps dictate the type and then follow it by a lambda?
+let add: fn(a, b: i32) = |a, b| a + b;
+
+// or, omit the type directly and just set the instance variable to a lambda
+let Befunge = struct {
+    a: i32;
+    b: i32 = 1;
+    c: fn(self: Befunge*) = fn(self: Befunge*) {
+
+    };
+    d = fn(self: Befunge*) = self.a;
+}
+
+let Befunge::init = fn(self: Befunge*) {
+    self.c();
+    self.d();
+}
+
+let Befunge::get_a = fn(self: Befunge) = self.a;
+
+
+// that would lead to syntax like this
+let add = fn(a, b: i32) = a + b;
+
+// perhaps after the variable is declared with the type of fn(...), whatever comes after the = is coerced to code
+// like how `let a: i64 = 6;` coerces 6 to an i64.
+
+let add: fn(a, b: i32) = a + b;
+
+// which is baiscally what I had before but with a `let`
+
+// anyway, I hate syntax, time to sleep.
+```
+
+
 Functions are defined like this:  
 ```citrus
 function_name: fun(args) -> ret_type = expr[;]

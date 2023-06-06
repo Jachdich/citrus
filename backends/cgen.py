@@ -19,6 +19,9 @@ INT_TYPES = ["i8", "i16", "i32", "i64", "u8", "u16", "u32", "u64"]
 # multiple .s
 # struct init order
 
+# temp var name counter
+var = 0
+
 def can_be_coerced(from_, to):
     # same type always able to convert
     if from_ == to: return True
@@ -42,7 +45,8 @@ def can_be_coerced(from_, to):
     # TODO support other datatypes
     return False
 
-def combine_types(lty, rty):
+def combine_numeric_types(lty, rty):
+    """Calculate the resultant type from performing an operation on two numeric types. Often this will be the bigger type."""
     if lty == rty:
         return lty
     if lty.num_ptr != 0 or rty.num_ptr != 0:
@@ -109,23 +113,37 @@ class LocalVar:
     def __repr__(self):
         return f"LocalVar('{self.name}', {self.ty})"
 
-def mangle_func(name, templates):
-    get_mangle_type = lambda t: t.name + "p" * t.num_ptr
-    return "_".join([name] + [get_mangle_type(i) for i in templates.values()])
+class Type:
+    def __init__(self, name: str, num_ptr: int=0, template_args: list=None):
+        self.name = name
+        self.num_ptr = num_ptr
+        self.template_args = template_args or []
+
+    def get_mangled_name(self):
+        return "_".join([name + "p" * self.num_ptr] + [i.name + "p" * i.num_ptr for i in self.template_args])
+
+class CEmitter:
+    def __init__(self):
+        self.code = ""
+        self.indent = 0
+
+    def get_indent(self, offset=0):
+        return " " * ((self.indent + offset) * 4)
+
+    def gen_var_name(self):
+        global var
+        var += 1
+        return "__var" + str(var)
 
 class CG:
     def __init__(self, fname):
-        self.code = ""
         self.fns = []
         self.structs = []
-        self.globals = []
-        self.locals = []
-        self.var = 0
-        self.indent = 0
+        self.globals = {}
+        self.locals = {}
         self.already_imported = [os.path.abspath(fname)]
         self.forward_defs = []
-    
-    
+
     def is_valid_type(self, ty):
         for arg in ty.template_args:
             if not self.is_valid_type(arg): return False
@@ -137,14 +155,7 @@ class CG:
         if not self.is_valid_type(ty):
             raise SyntaxError(f"{ty.get_context()}Unknown type '{ty}'")
     
-    def get_indent(self, offset=0):
-        return " " * ((self.indent + offset) * 4)
-    
     def get_actual_ret_ty(self, ast: FuncCall, locals=None):
-        name, _ = self.get_fn_name(ast)
-        sig = self.get_global(name)
-        if sig is None:
-            assert False, "Unreachable??"
         if not sig.ret_ty.name in sig.ast.template_args:
             # return type is not dependant on a template
             return sig.ret_ty
@@ -164,7 +175,7 @@ class CG:
             return ast
         elif type(ast) == IntLit:
             # TODO: how????
-            return Type([Ident(["u16"])])
+            return Type("u16")
         elif type(ast) == BinOp:
             lty = self.figure_out_type(ast.operands[0], locals)
             if ast.op == ".":
@@ -182,7 +193,7 @@ class CG:
                 # haven't found it yet, must not exist
                 raise SyntaxError(f"{ast.get_context()}bad field {ast.operands[1]} in {ast.operands[0]}")
             for rty in map(self.figure_out_type, ast.operands[1:]):
-                lty = combine_types(lty, rty)
+                lty = combine_numeric_types(lty, rty)
             return lty
         elif type(ast) == CompoundExpr:
             for smt in ast.smts:
@@ -232,20 +243,6 @@ class CG:
     def get_type(self, ty):
         return ty.name + "*" * ty.num_ptr
     
-    def gen_var_name(self):
-        self.var += 1
-        return "__var" + str(self.var)
-        
-    def get_global(self, name):
-        for sig in self.globals:
-            if sig.name == name:
-                return sig
-
-    def get_local(self, name):
-        for var in self.locals[-1]:
-            if var.name == name:
-                return var
-    
     def get_fn_name(self, ast: FuncCall):
         if type(ast.fn_expr) == Ident:
             return ast.fn_expr.val, None
@@ -262,8 +259,7 @@ class CG:
         else:
             raise RuntimeError(f"{ast.get_context()}Wtf, type of ast.fn_expr is", repr(ast.fn_expr))
         
-    def funccall(self, ast: FuncCall):
-        print(ast)
+    def funccall(self, ast: FuncCall, em: CEmitter):
         func_name, self_expr = self.get_fn_name(ast)
         func_sig = self.get_global(func_name)
         if func_sig is None:
@@ -298,23 +294,20 @@ class CG:
             templates[Type(ast.src, ast.pos, None, name="T", num_ptr=1, template_args=[])] = Type(ast.src, ast.pos, None, name="char", num_ptr=0, template_args=[])
         
         if func_sig.is_generic:
-            # HACK save code, kinda hacky
-            code = self.code
-            self.code = ""
-            self.make_fn_from_sig(func_sig, with_template_args=templates)
-            self.code = code
+            inner_em = CEmitter()
+            self.make_fn(ast, inner_em, with_template_args=templates)
 
         if func_sig.ret_ty.name != "void" or func_sig.ret_ty.num_ptr != 0:
             return mangle_func(func_name, templates) + "(" + ", ".join(args) + ")"
         else:
-            self.code += self.get_indent() + func_name + "(" + ", ".join(args) + ");\n"
+            em.code += self.get_indent() + func_name + "(" + ", ".join(args) + ");\n"
         
-    def binexpr(self, ast):
+    def binexpr(self, ast, em):
         op = ast.op
         tmp_code = ""
         
         # for the sake of simplicity here, I'm going to assume that operators =, +=, -=. /= and *= are only 2 (so a += b += c isn't valid)
-        # I should probably implement that in the parser at some point, either that or make it valid here
+        # I should robably implement that in the parser at some point, either that or make it valid here
         if op in ["=", "-=", "+=", "/=", "*="]:
             rval = self.expr(ast.operands[1])
             self.code += self.get_indent() + ast.operands[0].val + " " + op + " " + rval + ";\n"
@@ -412,7 +405,7 @@ class CG:
         if not can_be_coerced(ifbtype, elsebtype) and not can_be_coerced(elsebtype, ifbtype):
             raise SyntaxError(f"{ast.get_context()}Else body returns incompatible type '{elsebtype}' (if body returns '{ifbtype}')")
         
-        ret_ty = combine_types(ifbtype, elsebtype)
+        ret_ty = combine_numeric_types(ifbtype, elsebtype)
         tmp_name = self.gen_var_name()
         cond_res = self.expr(ast.condition)
         self.code += self.get_indent() + self.get_type(ret_ty) + " " + tmp_name + ";\n"
@@ -500,7 +493,7 @@ class CG:
     def gen_fn_sig(self, ast):
         ret_ty = ast.ret_ty
         if ret_ty is None:
-            ret_ty = Type(ast.src, ast.pos, [Ident(ast.src, ast.pos, ["void"]), []])
+            ret_ty = Type("void")
         
         if len(ast.template_args) != 0:
             generic = True
@@ -512,22 +505,18 @@ class CG:
         sig = FuncSig(name, args, ret_ty, ast, ast.assoc_struct is not None, generic)
         return sig
    
-    def add_global(self, glob):
-        for g in self.globals:
-            if g.name == glob.name:
-                raise SyntaxError(f"Redefinition of '{glob.name}'")
-        self.globals.append(glob)
+    def add_global(self, name: str, ast: Ast):
+        if name in self.globals:
+            raise SyntaxError(f"Redefinition of '{name}'")
+        self.globals[name] = ast
 
-    def funcdef(self, ast, always_forward=False):
-        sig = self.gen_fn_sig(ast)
-        self.add_global(sig)
-        if sig.is_generic:
-            # don't make the function yet!
-            return
+    def funcdef(self, ast: FnDef, always_forward=False):
+        self.add_global(ast.get_semimangled_name(), ast)
+        # check if generic - if not, don't make the function yet!
+        if len(ast.template_args) == 0:
+            self.make_fn(ast, always_forward)
         
-        self.make_fn_from_sig(sig, always_forward)
-        
-    def make_fn_from_sig(self, sig, always_forward=False, with_template_args=None):
+    def make_fn(self, sig, always_forward=False, with_template_args=None):
         if self.code != "":
             raise RuntimeError("Expected code to be empty, but it contained '" + self.code + "'")
         if with_template_args is None:
@@ -621,13 +610,14 @@ class CG:
         pprint(ast.as_list())
         # print(reconst_src(ast))
         print()
+        em = CEmitter()
         for smt in ast:
             if type(smt) == FnDef:
-                self.funcdef(smt)
+                self.funcdef(smt, em)
             elif type(smt) == StructDef:
-                self.structdef(smt)
+                self.structdef(smt, em)
             elif type(smt) == ImportSmt:
-                self.importsmt(smt, imports)
+                self.importsmt(smt, imports, em)
             else:
                 print(f"{smt.get_context()}Invalid syntax: Unexpected token '{smt}'")
                 exit(1)
