@@ -59,3 +59,12 @@ do_something: fn<T, U>(var: T) -> U where
     var.c
 }
 ```
+
+Alternatively still (stolen from typescript, looks cool ig):
+```citrus
+do_something: fn(var: {a: fn(Self*, i32), c: {foo: fn(i32)}}) = {
+    var.a(1);
+    var.c.foo(6);
+    var.c
+}
+```
