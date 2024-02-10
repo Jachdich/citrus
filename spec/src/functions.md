@@ -9,14 +9,11 @@ IDEAS:
 Befunge: struct {
     a: i32;
     b: i64;
-    do_something: fn(self: Befunge*) = |self| self.a;
     something_else: fn(self: Befunge*) {
         a
     }
 
 }
-// perhaps dictate the type and then follow it by a lambda?
-let add: fn(a, b: i32) = |a, b| a + b;
 
 // or, omit the type directly and just set the instance variable to a lambda
 let Befunge = struct {
@@ -26,6 +23,7 @@ let Befunge = struct {
 
     };
     d = fn(self: Befunge*) = self.a;
+    c: fn(self: Befunge*) = self.a;
 }
 
 let Befunge::init = fn(self: Befunge*) {
@@ -38,6 +36,10 @@ let Befunge::get_a = fn(self: Befunge) = self.a;
 
 // that would lead to syntax like this
 let add = fn(a, b: i32) = a + b;
+
+let add = fn(a, b: i32) {
+    a + b
+}
 
 // perhaps after the variable is declared with the type of fn(...), whatever comes after the = is coerced to code
 // like how `let a: i64 = 6;` coerces 6 to an i64.

@@ -402,6 +402,14 @@ prog.ignore(comment)
 # print(proto_element.parse_string("a: fn(Self*, i32) -> i32"))
 # print(anon_proto.parse_string("T with (a: fn(Self*, i32), c: U)"))
 
+StringOps: protocol {
+    len: usize,
+    fn len(self: Self*) usize = self.len;
+}
+
+impl StringOps for String;
+impl StringOps for [char];
+
 if __name__ == "__main__":
     def p(t, v=prog):
         print("\n".join([str(n) for n in v.parse_string(t, parseAll=True)]))
@@ -428,3 +436,8 @@ if __name__ == "__main__":
     p("Vec<T>::new: fn<T>() = 0;")
     p("Vec<T> { a: 1, b: 2 }", expr)
     p("Vec<T>::__drop__: proc$<T>(self: Vec<T>*) = {}")
+#google en passant 
+#holy hell
+#new comment just dropped
+#call the excorcist
+#nah man just update your're anti virus software`
