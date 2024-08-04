@@ -1,0 +1,43 @@
+
+/// A growable contiguous array. Represented as a pointer, a length and a capacity.
+/// # Examples
+/// ```
+/// mut numbers = Vec<usize>::new();
+/// numbers.push(17);
+/// numbers.push(39);
+/// numbers.push(74);
+/// printf("%d\n", numbers[1]); // 39
+/// numbers.del();
+/// ```
+const Vec<T> = struct<T> {
+	len: usize,
+	cap: usize,
+	data: T*,
+}
+
+/// Create a new empty vector.
+const Vec<T>::new = func<T>(): Vec<T> {
+	Vec { len: 0, cap: 0, data: null }
+}
+
+/// Destructor for the vector
+const Vec<T>::del = proc<T>(self: *mut Vec<T>) {
+	free(self.data);
+}
+
+/// Add a new element to the end of the vector. Reallocates the underlying
+/// array if it's not big enough for the new element.
+const Vec<T>::push = proc<T>(self: *mut Vec<T>, val: T) {
+	if self.len >= self.cap {
+		self.cap *= 2;
+		if self.cap == 0 {
+			self.cap = 1;
+		}
+		self.data = realloc(self.data, self.cap);
+	}
+	self.data[self.len] = val;
+	self.len += 1;
+}
+
+const Vec<T>::__index__ = func<T>(self: *mut Vec<T>, index: usize): T self.data[index];
+

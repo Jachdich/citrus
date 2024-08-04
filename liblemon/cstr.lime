@@ -1,1 +1,0 @@
-strlen: func(data: char*) -> u64;

@@ -1,9 +1,6 @@
-import inspect
-from pyparsing import *
-from string import printable
-from pprint import pprint
-# ParserElement.enablePackrat()
-ParserElement.enableLeftRecursion()
+import pyparsing as pp
+from pyparsing import alphas, alphanums
+pp.ParserElement.enableLeftRecursion()
 
 class Ast:
     def __init__(self, src, pos, tokens):
@@ -23,39 +20,100 @@ class Ast:
         s += " " * (self.column) + "^ " + str(self.lineno) + ":" + str(self.column)
         return "\n" + s + "\n"
                 
+def type_assert(var, types):
+    if not isinstance(var, types):
+        raise TypeError(f"Expected type {types} and instead got {type(var)}")
 
-class IntLit(Ast):
+class NumLit(Ast):
+    val: int | float
     def __init__(self, src, pos, tokens):
         super().__init__(src, pos, tokens)
         self.val = int(tokens[0])
+        type_assert(self.val, (int, float))
         
     def from_val(val):
-        return IntLit([val])
+        return NumLit([val])
     
     def __repr__(self):
-        return f"{self.val}IL"
+        return f"NumLit({self.val})"
+    def __str__(self):
+        return str(self.val)
+
+    # def get_type(self):
+        
+
+class StrLit(Ast):
+    val: str
+    def __init__(self, src, pos, tokens):
+        super().__init__(src, pos, tokens)
+        self.val = tokens[0]
+        type_assert(self.val, str)
+        
+    def from_val(val):
+        return StrLit([val])
+    
+    def __repr__(self):
+        return f"StrLit({self.val})"
     def __str__(self):
         return str(self.val)
 
 class Ident(Ast):
+    name: str
     def __init__(self, src, pos, tokens):
         super().__init__(src, pos, tokens)
-        self.val = tokens[0]
-    
+        self.name = tokens[0]
+        type_assert(self.name, str)
+
     def __repr__(self):
-        return f"Ident({self.val})"
-    def __str__(self):
-        return self.val
+        return f"Ident({self.name})"
+
+class GenericIdent(Ast):
+    name: str
+    generics: list["TypeIdent"]
+    def __init__(self, src, pos, tokens):
+        super().__init__(src, pos, tokens)
+        self.name = tokens[0].name
+        self.generics = tokens[1:] if len(tokens) > 1 else []
+        type_assert(self.name, str)
+        [type_assert(g, TypeIdent) for g in self.generics]
+
+    def __repr__(self):
+        gens = f"<{', '.join(map(repr, self.generics))}>" if len(self.generics) > 0 else ""
+        return f"GenericIdent({self.name}{gens})"
+
+class NamespacedIdent(Ast):
+    vals: list[Ident]
+    def __init__(self, src, pos, tokens):
+        super().__init__(src, pos, tokens)
+        self.vals = tokens
+        [type_assert(g, Ident) for g in self.vals]
+        assert len(self.vals) > 0
+
+    def __repr__(self):
+        return f"NamespacedIdent({', '.join(map(repr, self.vals))})"
+
+class TypeIdent(Ast):
+    vals: list[GenericIdent]
+    def __init__(self, src, pos, tokens):
+        super().__init__(src, pos, tokens)
+        self.vals = tokens
+        [type_assert(g, GenericIdent) for g in self.vals]
+        assert len(self.vals) > 0
+
+    def __repr__(self):
+        return f"TypeIdent({', '.join(map(repr, self.vals))})"
 
 class BinOp(Ast):
+    op: str
+    operands: tuple[Ast, Ast]
     def __init__(self, src, pos, tokens):
         super().__init__(src, pos, tokens)
-        if len(tokens) > 1 and tokens[1] in ["[", ".", "::"]: # special case operators
-            self.op = tokens[1]
-            self.operands = [tokens[0], tokens[2]]
-        else:
-            self.op = tokens[0][1]
-            self.operands = tokens[0][::2]
+        self.op = tokens[0][1]
+        self.operands = tuple(tokens[0][::2])
+        type_assert(self.op, str)
+        assert len(self.operands) == 2
+        type_assert(self.operands[0], Ast)
+        type_assert(self.operands[1], Ast)
     
     def __repr__(self):
         return "BinOp(" + f" {self.op} ".join(map(repr, self.operands)) + ")"
@@ -63,10 +121,14 @@ class BinOp(Ast):
         return f" {self.op} ".join(map(str, self.operands))
 
 class UnOp(Ast):
+    op: str
+    operand: Ast
     def __init__(self, src, pos, tokens):
         super().__init__(src, pos, tokens)
         self.operand = tokens[0][0]
         self.op = tokens[0][1]
+        type_assert(self.op, str)
+        type_assert(self.operand, Ast)
     
     def __repr__(self):
         return f"UnOp({repr(self.operand)}{self.op})"
@@ -74,370 +136,64 @@ class UnOp(Ast):
     def __str__(self):
         return f"{self.operand}{self.op}"
 
-class ImportSmt(Ast):
-    def __init__(self, src, pos, tokens):
-        super().__init__(src, pos, tokens)
-        self.fname = tokens[1]
-    
-    def __repr__(self):
-        return f"Import({self.fname})"
-    def __str__(self):
-        return f'import "{self.fname}"'
+ident = pp.Word(alphas + "_", alphanums + "_").set_parse_action(Ident)
+namespaced_ident = pp.DelimitedList(ident, "::").set_parse_action(NamespacedIdent)
+str_lit = (pp.Suppress('"') - pp.Word(pp.printables + " ", exclude_chars='"') - pp.Suppress('"')).set_parse_action(StrLit)
+literal = str_lit | pp.pyparsing_common.number.set_parse_action(NumLit)
 
-class FnDef(Ast):
-    def __init__(self, src, pos, tokens):
-        super().__init__(src, pos, tokens)
-        if len(tokens[0]) == 1:
-            self.name = tokens[0][0].val
-            self.assoc_struct = None
-        else:
-            self.name = tokens[0][1].val
-            self.assoc_struct = tokens[0][0]
-        
-        self.template_args = tokens[2]
-        
-        self.args = list(zip([n.val for n in tokens[3][0][::2]], tokens[3][0][1::2])) # (name, type) pairs
-        self.ret_ty = tokens[3][1] if len(tokens[3]) > 1 else None
-        if len(tokens) == 5:
-            self.forward_decl = False
-            self.body = tokens[4]
-        else:
-            self.forward_decl = True
-            self.body = None
+type_ident = pp.Forward()
+generic_list = pp.DelimitedList(type_ident, ",", allow_trailing_delim=True)
+generic_def_list = pp.DelimitedList(ident, ",", allow_trailing_delim=True)
+generic_ident = (ident - pp.Optional(pp.Suppress("<") - generic_list - pp.Suppress(">"))).set_parse_action(GenericIdent)
+type_ident << pp.DelimitedList(generic_ident, "::").set_parse_action(TypeIdent)
+arg_def = (ident - pp.Suppress(":") - type_ident)
+arg_def_list = pp.DelimitedList(arg_def, ",", allow_trailing_delim=True)
 
-    def __repr__(self):
-        return f"FnDef({(self.assoc_struct.name + '::') if self.assoc_struct is not None else ''}{self.name}<{self.template_args}>({', '.join([str(a) + ': ' + str(b) for a, b in self.args])}) -> {self.ret_ty} = {self.body})"
+expr = pp.Forward()
 
-    def __str__(self):
-        return f"{(self.assoc_struct.name + '::') if self.assoc_struct is not None else ''}{self.name}: fn<{self.template_args}>({', '.join([str(a) + ': ' + str(b) for a, b in self.args])}){(' -> ' + str(self.ret_ty)) if self.ret_ty is not None else ''} = {self.body}"
-
-    def get_semimangled_name(self):
-        if self.assoc_struct is not None:
-            return self.assoc_struct.name + "_" + self.name
-        return self.name
-
-class VarAssign(Ast):
-    def __init__(self, src, pos, tokens):
-        super().__init__(src, pos, tokens)
-        self.lval = tokens[0].val
-        self.rval = tokens[1]
-    
-    def __str__(self):
-        return f"{self.lval} = {self.rval}"
-    
-    def __repr__(self):
-        return f"VarAssign({self.lval} = {self.rval})"
-
-class VarDef(Ast):
-    def __init__(self, src, pos, tokens):
-        super().__init__(src, pos, tokens)
-        tokens = tokens[0]
-        self.name = tokens[0].val
-        tokens.pop(0)
-        
-        self.ty = None
-        self.val = None
-        
-        while len(tokens) > 0:
-            if type(tokens[0]) == TypeSpecifier:
-                self.ty = tokens[0]
-            else:
-                self.val = tokens[0]
-                
-            tokens.pop(0)
-        
-    def __str__(self):
-        return f"let {self.name}: {self.ty} = {self.val};"
-    
-    def __repr__(self):
-        return f"VarDef({self.name}" + \
-               (f": {self.ty}" if self.ty is not None else "") + \
-               (f" = {repr(self.val)}" if self.val is not None else "") + ")"
-
-class IfSmt(Ast):
-    def __init__(self, src, pos, tokens):
-        super().__init__(src, pos, tokens)
-        self.condition = tokens[0]
-        self.body = tokens[1]
-        self.elifs = list(zip(tokens[2][::2], tokens[2][1::2])) # (expr, body) pairs
-        if len(tokens) == 4:
-            self.else_body = tokens[3]
-        else:
-            self.else_body = None
-        
-    def __str__(self):
-        return f"if {self.condition} {self.body} {' '.join(['elif ' + str(t[0]) + ' ' + str(t[1]) for t in self.elifs])} else {self.else_body}"
-    
-    def __repr__(self):
-        return f"IfSmt({self.condition}, {self.body}" +\
-                (", " if len(self.elifs) > 0 else "") +\
-                ", ".join(["Elif(" + repr(t[0]) + ", " + repr(t[1]) + ")" for t in self.elifs]) +\
-                (f", {self.else_body})" if self.else_body is not None else ")")
-
-class WhileSmt(Ast):
-    def __init__(self, src, pos, tokens):
-        super().__init__(src, pos, tokens)
-        self.condition = tokens[0]
-        self.body = tokens[1]
-    
-    def __repr__(self):
-        return f"WhileSmt({repr(self.condition)} {repr(self.body)})"
-
-class IfExpr(IfSmt):
-    def __init__(self, src, pos, tokens):
-        super().__init__(src, pos, tokens)
-
-class CompoundSmt(Ast):
-    def __init__(self, src, pos, tokens):
-        super().__init__(src, pos, tokens)
-        self.smts = tokens
-    
-    def __repr__(self):
-        return f"CompoundSmt({{{self.smts}}})"
-
-    def __str__(self):
-        return "{" + "\n".join([str(n) for n in self.smts]) + "\n}"
-
-class CompoundExpr(Ast):
-    def __init__(self, src, pos, tokens):
-        super().__init__(src, pos, tokens)
-        self.smts = tokens[:-1]
-        self.expr = tokens[-1]
-    
-    def __repr__(self):
-        return f"CompoundExpr({{{self.smts + [self.expr,]}}})"
-    def __str__(self):
-        return "{" + '\n'.join([str(n) for n in self.smts]) + "\n" + str(self.expr) + "\n}"
-
-class FuncCall(Ast):
-    def __init__(self, src, pos, tokens):
-        super().__init__(src, pos, tokens)
-        self.fn_expr = tokens[0]
-        if len(tokens) > 1:
-            self.args = tokens[1:]
-        else:
-            self.args = []
-            
-    def __repr__(self):
-        return f"FuncCall({self.fn_expr}({self.args}))"
-
-    def __str__(self):
-        return f"{self.fn_expr}({self.args})"
-
-class TypeSpecifier(Ast):
-    def __init__(self, src, pos, tokens):
-        super().__init__(src, pos, tokens)
-        self.template_args = []
-
-        if type(tokens[0]) == str and tokens[0] == "*":
-            self.name = "void"
-            self.num_ptr = len(tokens)
-        else:
-            self.name = tokens[0].val
-            if len(tokens) > 2:
-                self.num_ptr = len([n for n in tokens[2:] if n == "*"])
-            else:
-                self.num_ptr = 0
-            self.template_args = tokens[1]
-
-    def __repr__(self):
-        return "Type(" + self.name + (("<" + ", ".join(map(repr, self.template_args)) + ">") if len(self.template_args) > 0 else "")  + "*" * self.num_ptr + ")"
-    
-    def __str__(self):
-        return self.name + (("<" + ", ".join(map(repr, self.template_args)) + ">") if len(self.template_args) > 0 else "")  + "*" * self.num_ptr
-    
-    def get_mangled_name(self):
-        templates = ""
-        if len(self.template_args) > 0:
-            templates = "_" + "_".join([n.get_mangled_name() for n in self.template_args])
-        return self.name + templates
-
-class StructDef(Ast):
-    def __init__(self, src, pos, tokens):
-        super().__init__(src, pos, tokens)
-        self.name = tokens[0].val
-        self.template_args = tokens[1]
-        self.members = list(zip([n.val for n in tokens[2:][::2]], tokens[2:][1::2]))
-    
-    def __repr__(self):
-        return f"Struct({self.name} {{{', '.join([n + ': ' + repr(t) for n, t in self.members])}}})"
-
-class StructInit(Ast):
-    def __init__(self, src, pos, tokens):
-        super().__init__(src, pos, tokens)
-        self.struct_name = tokens[0].val
-        self.init_args = list(zip([n.val for n in tokens[2:][::2]], tokens[2:][1::2]))
-
-    def __repr__(self):
-        return f"StructInit({self.struct_name} {{{', '.join([str(n) + ': ' + repr(t) for n, t in self.init_args])}}})"
-
-comment = Literal("//") + restOfLine
-
-OPAREN, CPAREN, COMMA, COLON, SEMI, EQ, OBRACE, CBRACE = map(Suppress, "(),:;={}")
-ident = Word(alphas + "_", alphanums + "_").set_parse_action(Ident)
-integer = Combine(Optional("-") + Word("0123456789")).set_parse_action(IntLit)
-decimal = Combine(Optional("-") + Word("0123456789") + Literal(".") + Word("0123456789"))
-
-expr = Forward()
-smt = Forward()
-type_ = Forward()
-
-# arg_expr_list = delimitedList(expr, delim=",")
-
-# primary = ident | number | OPAREN + expr + CPAREN
-# postfix = primary\
-#           | postfix + OPAREN + CPAREN\
-#           | postfix + OPAREN + arg_expr_list + CPAREN\
-#           | postfix + Literal("*")\
-#           | postfix + Literal("&")
-
-# mul_expr <<= postfix | mul_expr + Literal("*") + postfix | mul_expr
-
-# template_list = Group(Suppress("<") + delimitedList(ident) + Suppress(">"))
-# arg_def_list = Group(ZeroOrMore(ident + COLON + type_ + COMMA) + Optional(ident + COLON + type_))
-# type_ << ((ident + Optional(template_list, []) + ZeroOrMore("*")) |
-#           OneOrMore("*")).set_parse_action(Type)
-
-# # term = (OPAREN + expr + CPAREN) | number | Group(ident).set_results_name("ident")
-# term = number | ident
-compoundsmt = (OBRACE + ZeroOrMore(smt) + CBRACE).set_parse_action(CompoundSmt)
-compoundexpr = (OBRACE + ZeroOrMore(smt) + expr + CBRACE).set_parse_action(CompoundExpr)
-
-importsmt = (Literal("import") + QuotedString(quoteChar='"')).set_parse_action(ImportSmt)
-
-# subscript = (expr + Suppress("[") + expr + Suppress("]"))
-# ifexpr = (Suppress("if") + expr + compoundexpr + Suppress("else") + compoundexpr).set_parse_action(IfExpr)
-# funccall = (ident + ZeroOrMore(Literal("::") | Literal(".") + ident)) + OPAREN + ZeroOrMore(expr + Suppress(",")) + CPAREN
-# nonmathexpr = (subscript | ifexpr | funccall | structinit | term | ident)
-
-eqfunc       =  (EQ + expr + SEMI).set_parse_action(CompoundExpr)
-compoundfunc =  Optional(EQ) + (compoundexpr | compoundsmt) + Optional(SEMI)
-
-# funcdef = (Group(ident + Optional(Suppress("::") + ident)) + Suppress(":") + (Literal("fn") | Literal("proc")) +
-#           Optional(template_list, []) +
-#           Group(Optional(OPAREN + arg_def_list + CPAREN, []) + Optional(Suppress("->") + type_)) +
-#           (compoundfunc | eqfunc | SEMI)).set_parse_action(FnDef)
-
-
-vardef = Group(Suppress("let") + ident + Optional(COLON + type_) + Optional(EQ + expr) + SEMI).set_parse_action(VarDef)
-
-while_smt = (Suppress("while") + expr + compoundsmt).set_parse_action(WhileSmt)
-
-# ifsmt  = (Suppress("if") + expr + compoundsmt + Optional(Suppress("else") + compoundsmt)).set_parse_action(IfSmt)
-# expr << (compoundexpr | mathexpr | nonmathexpr)
-
-def parse(text):
-    try:
-        return prog.parse_string(text, parse_all=True)
-    except ParseException as err:
-        print(err.explain())
-        exit(1)
-
-constant = decimal | integer
-
-arg_expr_list = Forward()
-arg_expr_list <<= expr ^ (arg_expr_list + COMMA + expr)
-
-primary_expr = ident | constant | (OPAREN + expr + CPAREN)
-
-postfix_expr = Forward()
-postfix_expr  <<= (postfix_expr + OPAREN + Optional(arg_expr_list) + CPAREN).set_parse_action(FuncCall)\
-                | (postfix_expr + Literal("[") + expr + Suppress("]")).set_parse_action(BinOp)\
-                | (postfix_expr + Literal(".") + ident).set_parse_action(BinOp)\
-                | (type_ + Literal("::") + ident).set_parse_action(BinOp)\
-                | primary_expr
-
-if_expr = Forward()
-if_expr <<= (Suppress("if") + expr + compoundexpr + Group(ZeroOrMore(Suppress("elif") + expr + compoundexpr)) + Suppress("else") + compoundexpr).set_parse_action(IfExpr) | postfix_expr
-if_smt = (Suppress("if") + expr + compoundsmt + Group(ZeroOrMore(Suppress("elif") + expr + compoundsmt)) + Optional(Suppress("else") + compoundsmt)).set_parse_action(IfSmt)
-
-
-mathexpr = infix_notation(if_expr,
+math_expr = pp.infix_notation(expr,
     [
-        # (oneOf(". ::"), 2, opAssoc.LEFT, BinOp),
-        (oneOf("@ &"), 1, opAssoc.RIGHT, UnOp),
-        (oneOf("* / %"), 2, opAssoc.LEFT, BinOp),
-        (oneOf("+ -"), 2, opAssoc.LEFT, BinOp),
-        (oneOf(">= <= == > < !="), 2, opAssoc.LEFT, BinOp),
-        (oneOf("= += -= *= /="), 2, opAssoc.LEFT, BinOp),
+        (pp.oneOf("@ &"), 1, pp.opAssoc.RIGHT, UnOp),
+        (pp.oneOf("* / %"), 2, pp.opAssoc.LEFT, BinOp),
+        (pp.oneOf("+ -"), 2, pp.opAssoc.LEFT, BinOp),
+        (pp.oneOf(">= <= == > < !="), 2, pp.opAssoc.LEFT, BinOp),
+        (pp.oneOf("= += -= *= /="), 2, pp.opAssoc.LEFT, BinOp),
     ]
 )
 
-# smt << (whilesmt | vardef | ifsmt | (expr + Suppress(";")))
-smt <<= vardef | while_smt | if_smt | expr + SEMI
-
-template_list = Group(Suppress("<") + delimitedList(type_, delim=",") + Suppress(">"))
-arg_def_list = Group(ZeroOrMore(ident + COLON + type_ + COMMA) + Optional(ident + COLON + type_))
-type_ << ((ident + Optional(template_list, []) + ZeroOrMore("*")) |
-          OneOrMore("*")).set_parse_action(TypeSpecifier)
-
-funcdef = (Group(
-                Optional(type_ + Suppress("::")) + ident
-            ) +
-            Suppress(":") +
-            (Literal("fn") | Literal("proc$") | Literal("proc") | Literal("func") | Literal("fun")) +
-            Optional(template_list, []) +
-            Group(Optional(OPAREN + arg_def_list + CPAREN, []) +
-            Optional(Suppress("->") + type_)) +
-            (compoundfunc | eqfunc | SEMI)
-        ).set_parse_action(FnDef)
-
-structdef = (ident + Suppress(":") + Suppress("struct") + 
-            Optional(template_list, []) + OBRACE +
-            ZeroOrMore(ident + Suppress(":") + type_ + SEMI) + CBRACE).set_parse_action(StructDef)
+func_expr = (pp.Keyword("func") | pp.Keyword("proc")) -\
+    pp.Optional(pp.Suppress("<") - generic_def_list - pp.Suppress(">")) -\
+    pp.Suppress("(") - pp.Optional(arg_def_list, []) - pp.Suppress(")") -\
+    expr
 
 
-structinit = (ident + Optional(template_list) + OBRACE + delimitedList(ident + Suppress(":") + expr, ",") + CBRACE).set_parse_action(StructInit)
-expr <<= (structinit | mathexpr)
+statement = expr + pp.Suppress(";")
+block_expr = pp.Suppress("{") - pp.ZeroOrMore(statement) - pp.Optional(expr) - pp.Suppress("}")
+expr << (func_expr | block_expr | math_expr | ident | literal)
 
-prog = ZeroOrMore(importsmt | funcdef | structdef)
-prog.ignore(comment)
+definition = pp.Keyword("const") - type_ident - pp.Suppress("=") - expr - pp.Optional(pp.Suppress(";"))
 
-# TODO this is the anonymous protocol grammar
-# arg_type_list = type_ + ZeroOrMore(COMMA + type_) + Optional(COMMA)
-# proto_element = Group(ident + COLON + ((Suppress("fn") + OPAREN + arg_type_list + CPAREN + Optional(Suppress("->") + type_)) | type_))
-# anon_proto = ident + Suppress("with") + OPAREN + proto_element + ZeroOrMore(COMMA + proto_element) + Optional(COMMA)
-
-# print(arg_type_list.parse_string("Self*, i32"))
-# print(proto_element.parse_string("a: fn(Self*, i32) -> i32"))
-# print(anon_proto.parse_string("T with (a: fn(Self*, i32), c: U)"))
-
-# StringOps: protocol {
-#     len: usize,
-#     fn len(self: Self*) usize = self.len;
-# }
-
-# impl StringOps for String;
-# impl StringOps for [char];
+program = pp.ZeroOrMore(definition)
 
 if __name__ == "__main__":
-    def p(t, v=prog):
-        print("\n".join([str(n) for n in v.parse_string(t, parseAll=True)]))
-        print("==============================+")
+    def p(parser, text):
+        parser.parse_string(text, parse_all=True).pprint()
+    
+    print(program.parse_string("const a = 1;", parse_all=True))
+    p(generic_ident, "test")
+    p(generic_ident, "test<T>")
+    p(generic_ident, "test<T, U, V>")
+    p(type_ident, "test")
+    p(type_ident, "test<T>")
+    p(type_ident, "test<T, U, V>")
+    p(type_ident, "name::space::test")
+    p(type_ident, "name::space::test<T>")
+    p(type_ident, "name::space::test<T, U, V>")
+    p(type_ident, "name<T>::space<T, U>::test")
+    p(arg_def, "a: b")
+    p(arg_def, "a: B::c<T>")
+    p(arg_def, "a: B::c<std::io::File>")
+    p(program, "const x = func() {}")
+    p("const a::b = func(a: b) { 1; \"hello\"; 3.31; func() 2 };")
+    p(program, "const Vec<T>::new = func<T>(init_len: usize, allocator: std::alloc::Allocator<T>) { 1 }")
 
-    p("hello(a, 3)", expr)
-    p("69 * 4", expr)
-    p("@asdf + 3 + &c", expr)
-    p("1 == 2", expr)
-    p("if 3 { 1 } else { 2 }", expr)
-
-    print(smt.parse_string("1==2;"))
-    print(prog.parse_string("String::parse: fn<T,U>(a: f64, b: T) -> U = { 1 == 2; if a == 3 { 1 } else { 2 } }", parseAll=True))
-    print(compoundexpr.parse_string("{ 1 == 2; if b == 2 { 3 == 4; } if a == 3 { 1 } elif a == 4 { 2 } else { 3 } }", parseAll=True))
-
-    print(expr.parse_string("vec[16]", parseAll=True))
-    print(smt.parse_string("let a = 4;", parseAll=True))
-
-
-    p("let seg = malloc(seg_len);", smt)
-    p("make_seg: func(data: char*, seg_len: u32) -> Slice<char> {}")
-    p("while pos < self.length { 1; }", smt)
-    p("Vec<Slice<char>>::new", expr)
-    p("Vec<T>::new: fn<T>() = 0;")
-    p("Vec<T> { a: 1, b: 2 }", expr)
-    p("Vec<T>::__drop__: proc$<T>(self: Vec<T>*) = {}")
-#google en passant 
-#holy hell
-#new comment just dropped
-#call the excorcist
-#nah man just update your're anti virus software`
