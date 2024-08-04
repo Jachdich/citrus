@@ -402,13 +402,13 @@ prog.ignore(comment)
 # print(proto_element.parse_string("a: fn(Self*, i32) -> i32"))
 # print(anon_proto.parse_string("T with (a: fn(Self*, i32), c: U)"))
 
-StringOps: protocol {
-    len: usize,
-    fn len(self: Self*) usize = self.len;
-}
+# StringOps: protocol {
+#     len: usize,
+#     fn len(self: Self*) usize = self.len;
+# }
 
-impl StringOps for String;
-impl StringOps for [char];
+# impl StringOps for String;
+# impl StringOps for [char];
 
 if __name__ == "__main__":
     def p(t, v=prog):

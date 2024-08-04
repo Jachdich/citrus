@@ -49,6 +49,15 @@ let add: fn(a, b: i32) = a + b;
 // which is baiscally what I had before but with a `let`
 
 // anyway, I hate syntax, time to sleep.
+
+
+// ok now hear me out
+// maybe functional languages were right after all
+// seperate type from function decleration
+// I'm not overly fond of this because it gets rid of the nice `f(a, b) = a + b` feel
+// however it seems most correct: add is a variable of type (i32, i32) -> i32,
+// and its value is the function that takes two arguments (a and b) and adds them. hmm...
+let add: fn(i32, i32) -> i32 = |a, b| a + b;
 ```
 
 
