@@ -39,7 +39,8 @@ class NumLit(Ast):
     def __str__(self):
         return str(self.val)
 
-    # def get_type(self):
+    def get_type(self):
+        return Type("u16")
         
 
 class StrLit(Ast):
@@ -136,6 +137,11 @@ class UnOp(Ast):
     def __str__(self):
         return f"{self.operand}{self.op}"
 
+class FuncExpr(Ast):
+    def __init__(self, src, pos, tokens):
+        super().__init__(src, pos, tokens)
+        
+
 ident = pp.Word(alphas + "_", alphanums + "_").set_parse_action(Ident)
 namespaced_ident = pp.DelimitedList(ident, "::").set_parse_action(NamespacedIdent)
 str_lit = (pp.Suppress('"') - pp.Word(pp.printables + " ", exclude_chars='"') - pp.Suppress('"')).set_parse_action(StrLit)
@@ -143,11 +149,11 @@ literal = str_lit | pp.pyparsing_common.number.set_parse_action(NumLit)
 
 type_ident = pp.Forward()
 generic_list = pp.DelimitedList(type_ident, ",", allow_trailing_delim=True)
-generic_def_list = pp.DelimitedList(ident, ",", allow_trailing_delim=True)
+generic_def_list = pp.Group(pp.DelimitedList(ident, ",", allow_trailing_delim=True))
 generic_ident = (ident - pp.Optional(pp.Suppress("<") - generic_list - pp.Suppress(">"))).set_parse_action(GenericIdent)
 type_ident << pp.DelimitedList(generic_ident, "::").set_parse_action(TypeIdent)
 arg_def = (ident - pp.Suppress(":") - type_ident)
-arg_def_list = pp.DelimitedList(arg_def, ",", allow_trailing_delim=True)
+arg_def_list = pp.Group(pp.DelimitedList(arg_def, ",", allow_trailing_delim=True))
 
 expr = pp.Forward()
 
@@ -161,10 +167,10 @@ math_expr = pp.infix_notation(expr,
     ]
 )
 
-func_expr = (pp.Keyword("func") | pp.Keyword("proc")) -\
+func_expr = ((pp.Keyword("func") | pp.Keyword("proc")) -\
     pp.Optional(pp.Suppress("<") - generic_def_list - pp.Suppress(">")) -\
     pp.Suppress("(") - pp.Optional(arg_def_list, []) - pp.Suppress(")") -\
-    expr
+    expr)#.set_parse_action(FuncExpr)
 
 
 statement = expr + pp.Suppress(";")
@@ -175,25 +181,37 @@ definition = pp.Keyword("const") - type_ident - pp.Suppress("=") - expr - pp.Opt
 
 program = pp.ZeroOrMore(definition)
 
+class CG:
+    def __init__(self):
+        self.globals = {}
+    def compile(self, parsed: list[Ast]):
+        pass
+        # for smt in parsed:
+            
+
 if __name__ == "__main__":
     def p(parser, text):
         parser.parse_string(text, parse_all=True).pprint()
     
-    print(program.parse_string("const a = 1;", parse_all=True))
-    p(generic_ident, "test")
-    p(generic_ident, "test<T>")
-    p(generic_ident, "test<T, U, V>")
-    p(type_ident, "test")
-    p(type_ident, "test<T>")
-    p(type_ident, "test<T, U, V>")
-    p(type_ident, "name::space::test")
-    p(type_ident, "name::space::test<T>")
-    p(type_ident, "name::space::test<T, U, V>")
-    p(type_ident, "name<T>::space<T, U>::test")
-    p(arg_def, "a: b")
-    p(arg_def, "a: B::c<T>")
-    p(arg_def, "a: B::c<std::io::File>")
-    p(program, "const x = func() {}")
-    p("const a::b = func(a: b) { 1; \"hello\"; 3.31; func() 2 };")
-    p(program, "const Vec<T>::new = func<T>(init_len: usize, allocator: std::alloc::Allocator<T>) { 1 }")
+    # print(program.parse_string("const a = 1;", parse_all=True))
+    # p(generic_ident, "test")
+    # p(generic_ident, "test<T>")
+    # p(generic_ident, "test<T, U, V>")
+    # p(type_ident, "test")
+    # p(type_ident, "test<T>")
+    # p(type_ident, "test<T, U, V>")
+    # p(type_ident, "name::space::test")
+    # p(type_ident, "name::space::test<T>")
+    # p(type_ident, "name::space::test<T, U, V>")
+    # p(type_ident, "name<T>::space<T, U>::test")
+    # p(arg_def, "a: b")
+    # p(arg_def, "a: B::c<T>")
+    # p(arg_def, "a: B::c<std::io::File>")
+    # p(program, "const x = func() {}")
+    # p(program, "const a::b = func(a: b) { 1; \"hello\"; 3.31; func() 2 };")
+    p(program, "const Vec<T>::new = func<T, U>(init_len: usize, allocator: std::alloc::Allocator<T>) { 1 }")
+
+    parsed = program.parse_string("const main = func() 0;")
+    cg = CG()
+    print(cg.compile(parsed))
 
