@@ -1,4 +1,5 @@
-const main = func(argc: int, argv: **char): i32 {
+const a = func(asdf: ree) { ree() }
+const main = func(argc: i32, argv: **char): i32 {
     printf("Hello, world!");
     0
 }

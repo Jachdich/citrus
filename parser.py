@@ -3,17 +3,14 @@ from pyparsing import alphas, alphanums
 pp.ParserElement.enableLeftRecursion()
 
 class Ast:
-    def __init__(self, src, pos, tokens):
+    def __init__(self, src: str, pos, tokens):
         self.src = src
         self.pos = pos
-        self.lineno = -1
         self.column = -1
-        total = 0
-        for i, line in enumerate(src.split("\n")):
-            if total + len(line) + 1 >= pos:
-                self.lineno = i + 1
-                self.column = pos - total
-            total += len(line) + 1
+        self.lineno = src.count("\n", 0, pos) + 1
+        while src[pos] != "\n" and pos > 0:
+            pos -= 1
+            self.column += 1
 
     def get_context(self):
         s = "\n".join(self.src.split("\n")[self.lineno-3:self.lineno]) + "\n"
@@ -23,13 +20,36 @@ class Ast:
 class CG:
     def __init__(self):
         self.globals = {}
+
+    def add_global(self, name: str, ast: Ast):
+        if name in self.globals:
+            raise SyntaxError(f"{ast.get_context()}Redefinition of '{name}'")
+        self.globals[name] = ast
+
+    def get_global(self, name):
+        for sig in self.globals:
+            if sig == name:
+                return sig
+
+    def is_valid_type(self, ty):
+        # for arg in ty.generics:
+        #     if not self.is_valid_type(arg): return False
+        if ty.c_name().strip("*") in ["i32", "i64", "i16", "i8", "u64", "u32", "u16", "u8", "f64", "f32", "char", "void"]:
+            return True
+        return self.get_global(ty.c_name()) != None
+
+    def check_valid_type(self, ty):
+        if not self.is_valid_type(ty):
+            raise SyntaxError(f"{ty.get_context()}Unknown type '{ty}'")
+    
     def compile(self, parsed: list[Ast]):
         total_code = '#include "citrus.h"\n'
         for smt in parsed:
             total_code += "// " + str(smt) + "\n"
             code, exprcode = smt.compile(self, 0)
             assert exprcode is None, "statements shouldn't generate an expression"
-            total_code += code + "\n\n"
+            if code is not None:
+                total_code += code + "\n\n"
         return total_code
 
 def type_assert(var, types):
@@ -86,8 +106,11 @@ class Ident(Ast):
     def __repr__(self):
         return f"Ident({self.name})"
 
-    def compile(self, state, indent):
+    def compile(self, state: CG, indent):
+        state.check_valid_type(self)
         return None, self.name
+    def c_name(self) -> str:
+        return self.name
 
 class GenericIdent(Ast):
     name: str
@@ -213,9 +236,10 @@ class FuncCall(Ast):
 class FuncExpr(Ast):
     generic_defs: list[Ident]
     args: list[tuple[Ident, TypeIdent]]
-    body: Ast
+    body: Ast | None
     ret_type: TypeIdent | None
     is_proc: bool
+    is_forward: bool
     def __init__(self, src, pos, tokens):
         super().__init__(src, pos, tokens)
         self.is_proc = tokens[0] == "proc"
@@ -223,12 +247,16 @@ class FuncExpr(Ast):
         self.args = [(x[0], x[1]) for x in tokens[2]]
         self.ret_type = tokens[3]
         self.body = tokens[4]
+        if self.body is None:
+            self.is_forward = True
+        else:
+            self.is_forward = False
 
         type_assert(self.generic_defs, list)
         [type_assert(g, Ident) for g in self.generic_defs]
         type_assert(self.args, list)
         [(type_assert(g, tuple), type_assert(g[0], Ident), type_assert(g[1], TypeIdent)) for g in self.args]
-        type_assert(self.body, Ast)
+        type_assert(self.body, (Ast, type(None)))
         type_assert(self.ret_type, (TypeIdent, type(None)))
 
     def __repr__(self):
@@ -253,12 +281,17 @@ class Definition(Ast):
         return f"const {self.name} = {self.value};"
 
     def compile(self, state: CG, indent: int):
+        state.add_global(self.name.c_name(), self.name)
         # if defining a function, do it properly
         if isinstance(self.value, FuncExpr):
+            if self.value.is_forward:
+                return None, None
             indent += 1
             name = self.name.c_name()
             ret_ty = self.value.ret_type.c_name()
             args = ", ".join(f"{ty.c_name()} {name.name}" for name, ty in self.value.args)
+            for arg in self.value.args:
+                state.check_valid_type(arg[1])
             body = ""
             if isinstance(self.value.body, BlockExpr):
                 for s in self.value.body.smts:
@@ -312,7 +345,7 @@ func_expr = ((pp.Keyword("func") | pp.Keyword("proc")) -\
     pp.Optional(pp.Suppress("<") - generic_def_list - pp.Suppress(">"), []) -\
     pp.Suppress("(") - pp.Optional(arg_def_list, []) - pp.Suppress(")") -\
     pp.Optional(pp.Suppress(":") - type_ident, None) -\
-    expr).set_parse_action(FuncExpr)
+    pp.Optional(expr, None)).set_parse_action(FuncExpr)
 
 
 statement = expr + pp.Suppress(";")
@@ -346,7 +379,9 @@ if __name__ == "__main__":
     # p(program, "const Vec<T>::new = func<T, U>(init_len: usize, allocator: std::alloc::Allocator<T>) { 1 }")
     p(expr, "1 + 1")
 
-    parsed = program.parse_string("const main = func(argc: int, argv: **char): i32 { printf(\"Hello, world!\"); 0 }")
+    with open("test.lime", "r") as f:
+        source = f.read()
+    parsed = program.parse_string(source)
     parsed.pprint()
     cg = CG()
     code = cg.compile(parsed)
