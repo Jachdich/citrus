@@ -1,0 +1,4 @@
+const main = func(argc: int, argv: **char): i32 {
+    printf("Hello, world!");
+    0
+}
