@@ -1,6 +1,12 @@
 import pyparsing as pp
 from pyparsing import alphas, alphanums
+from enum import StrEnum, unique
 pp.ParserElement.enableLeftRecursion()
+
+class BinTree:
+    def __init__(self, left: BinTree | None, right: BinTree | None):
+        self.left = left
+        self.right = right
 
 class Ast:
     def __init__(self, src: str, pos, tokens):
@@ -13,25 +19,74 @@ class Ast:
             self.column += 1
 
     def get_context(self):
-        s = "\n".join(self.src.split("\n")[self.lineno-3:self.lineno]) + "\n"
+        s = "\n".join(self.src.split("\n")[max(self.lineno-3, 0):self.lineno]) + "\n"
         s += " " * (self.column) + "^ " + str(self.lineno) + ":" + str(self.column)
         return "\n" + s + "\n"
 
+@unique
+class Primitive(StrEnum):
+    I8 = "i8"
+    I16 = "i16"
+    I32 = "i32"
+    I64 = "i64"
+    U8 = "u8"
+    U16 = "u16"
+    U32 = "u32"
+    U64 = "u64"
+    F32 = "f32"
+    F64 = "f64"
+    CHAR = "char"
+    VOID = "void"
+    STRUCT = "struct"
+    FUNCTION = "fn"
+
+class Type:
+    name: str
+    generics: list
+    primitive: Primitive
+    complex: bool
+    concrete: bool
+    def __init__(self, primitive, name=None, generics=None):
+        if primitive == Primitive.STRUCT or primitive == Primitive.FUNCTION:
+            assert name is not None, "Structs must have a name"
+            self.name = name
+
+            if generics is not None:
+                self.generics = generics
+            else:
+                self.generics = []
+
+            self.complex = True # dealing with a complex type
+        else:
+            self.complex = False # just the primitive
+
+        self.primitive = primitive
+
+    def get_mangled_name(self, resolved_generics: dict=None):
+        if not self.complex:
+            # just a primitive
+            return self.primitive
+        else:
+            if resolved_generics is None and len(self.generics) > 0:
+                raise RuntimeException("Cannot get mangled name without knowing the generic resolutions!")
+            return self.name + "".join(["_" + resolved_generics[g].get_mangled_name() for g in self.generics])
+
+
 class CG:
     def __init__(self):
-        self.globals = {}
+        self.globals: dict[str, Type] = {}
 
     def add_global(self, name: str, ast: Ast):
         if name in self.globals:
             raise SyntaxError(f"{ast.get_context()}Redefinition of '{name}'")
         self.globals[name] = ast
 
-    def get_global(self, name):
+    def get_global(self, name: str) -> Type:
         for sig in self.globals:
             if sig == name:
                 return sig
 
-    def is_valid_type(self, ty):
+    def is_valid_type(self, ty: Type):
         # for arg in ty.generics:
         #     if not self.is_valid_type(arg): return False
         if ty.c_name().strip("*") in ["i32", "i64", "i16", "i8", "u64", "u32", "u16", "u8", "f64", "f32", "char", "void"]:
@@ -109,6 +164,7 @@ class Ident(Ast):
     def compile(self, state: CG, indent):
         state.check_valid_type(self)
         return None, self.name
+
     def c_name(self) -> str:
         return self.name
 
@@ -288,7 +344,10 @@ class Definition(Ast):
                 return None, None
             indent += 1
             name = self.name.c_name()
-            ret_ty = self.value.ret_type.c_name()
+            if self.value.ret_type is None:
+                ret_ty = Type(Primitive.VOID)
+            else:
+                ret_ty = self.value.ret_type.c_name()
             args = ", ".join(f"{ty.c_name()} {name.name}" for name, ty in self.value.args)
             for arg in self.value.args:
                 state.check_valid_type(arg[1])
