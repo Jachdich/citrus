@@ -1,5 +1,13 @@
 const printf = func(_: *char);
+
 const main = func(argc: i32, argv: **char): i32 {
-    printf("Hello, world!");
+    printf(3);
     0
+}
+
+func f(x: i32) = x + 3;
+
+type Vec = struct(T) {
+    data: *T,
+    v
 }

@@ -3,11 +3,6 @@ from pyparsing import alphas, alphanums
 from enum import StrEnum, unique
 pp.ParserElement.enableLeftRecursion()
 
-class BinTree:
-    def __init__(self, left: BinTree | None, right: BinTree | None):
-        self.left = left
-        self.right = right
-
 class Ast:
     def __init__(self, src: str, pos, tokens):
         self.src = src
@@ -37,40 +32,49 @@ class Primitive(StrEnum):
     F64 = "f64"
     CHAR = "char"
     VOID = "void"
-    STRUCT = "struct"
-    FUNCTION = "fn"
 
-class Type:
+class FnType:
+    generics: list
+    args: list["Type"]
+    ret_ty: "Type"
+    def __init__(self, args: list["Type"], ret_ty: "Type", generics: list["Type"]=None):
+        if generics is not None:
+            self.generics = generics
+        else:
+            self.generics = []
+
+        self.ret_ty = ret_ty
+        self.args = args
+        
+
+    def c_name(self, resolved_generics: dict=None):
+        assert False, "IDK what mangled names of functions means"
+        
+class StructType:
     name: str
     generics: list
+    fields: list[tuple[str, "Type"]]
+    def __init__(self, name: str, fields: list[tuple[str, "Type"]], generics: list["Type"]=None):
+        self.name = name
+        self.fields = fields
+        self.generics = generics
+
+    def c_name(self, resolved_generics: dict=None):
+        if resolved_generics is None and len(self.generics) > 0:
+            raise RuntimeException("Cannot get mangled name without knowing the generic resolutions!")
+        return self.name + "".join(["_" + resolved_generics[g].get_mangled_name() for g in self.generics])
+
+class PrimitiveType:
     primitive: Primitive
-    complex: bool
-    concrete: bool
-    def __init__(self, primitive, name=None, generics=None):
-        if primitive == Primitive.STRUCT or primitive == Primitive.FUNCTION:
-            assert name is not None, "Structs must have a name"
-            self.name = name
-
-            if generics is not None:
-                self.generics = generics
-            else:
-                self.generics = []
-
-            self.complex = True # dealing with a complex type
-        else:
-            self.complex = False # just the primitive
-
+    num_ptr: int
+    def __init__(self, primitive: Primitive, num_ptr: int=0):
         self.primitive = primitive
+        self.num_ptr = num_ptr
 
-    def get_mangled_name(self, resolved_generics: dict=None):
-        if not self.complex:
-            # just a primitive
-            return self.primitive
-        else:
-            if resolved_generics is None and len(self.generics) > 0:
-                raise RuntimeException("Cannot get mangled name without knowing the generic resolutions!")
-            return self.name + "".join(["_" + resolved_generics[g].get_mangled_name() for g in self.generics])
-
+    def c_name(self, _=None):
+        return str(self.primitive) + "*" * self.num_ptr
+        
+Type = FnType | StructType | PrimitiveType
 
 class CG:
     def __init__(self):
@@ -87,14 +91,16 @@ class CG:
                 return sig
 
     def is_valid_type(self, ty: Type):
-        # for arg in ty.generics:
-        #     if not self.is_valid_type(arg): return False
-        if ty.c_name().strip("*") in ["i32", "i64", "i16", "i8", "u64", "u32", "u16", "u8", "f64", "f32", "char", "void"]:
+        if isinstance(ty, PrimitiveType):
             return True
         return self.get_global(ty.c_name()) != None
 
     def check_valid_type(self, ty):
         if not self.is_valid_type(ty):
+            raise SyntaxError(f"{ty.get_context()}Unknown type '{ty}'")
+
+    def check_exists(self, name):
+        if not self.get_global(name):
             raise SyntaxError(f"{ty.get_context()}Unknown type '{ty}'")
     
     def compile(self, parsed: list[Ast]):
@@ -126,8 +132,8 @@ class NumLit(Ast):
     def __str__(self):
         return str(self.val)
 
-    def get_type(self):
-        return Type("u16")
+    def get_type(self, _: CG) -> Type:
+        return PrimitiveType(Primitive.I32)
 
     def compile(self, state, indent):
         return None, str(self.val)
@@ -148,6 +154,9 @@ class StrLit(Ast):
     def __str__(self):
         return str(self.val)
 
+    def get_type(self, _: CG) -> Type:
+        return PrimitiveType(Primitive.CHAR, 1)
+
     def compile(self, state, indent):
         return None, f'"{self.val}"'
 
@@ -162,8 +171,11 @@ class Ident(Ast):
         return f"Ident({self.name})"
 
     def compile(self, state: CG, indent):
-        state.check_valid_type(self)
+        # state.check_valid_type(self)
+        state.check_exists(self)
         return None, self.name
+
+    def
 
     def c_name(self) -> str:
         return self.name
@@ -279,6 +291,9 @@ class FuncCall(Ast):
         return f"{self.fn_expr}({self.args})"
 
     def compile(self, state, indent):
+        fn_expr_type = self.fn_expr.get_type(state)
+        # if fn_expr_type
+        arg_types = [arg.get_type() for arg in self.args]
         fn_expr_body, fn_expr_ret = self.fn_expr.compile(state, indent)
         args_body, args_ret = zip(*[arg.compile(state, indent) for arg in self.args])
         bodies = list(filter(lambda x: x is not None, args_body + (fn_expr_body,)))
